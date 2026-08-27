@@ -12,6 +12,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            // teste do joao para fazer um pr
             SosTheme(
                 darkTheme = true,
                 dynamicColor = false,
