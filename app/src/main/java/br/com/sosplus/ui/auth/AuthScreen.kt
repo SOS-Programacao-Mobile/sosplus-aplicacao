@@ -428,7 +428,7 @@ private fun TelaLogin(
                 )
             }
 
-            TextoTermos(modifier = Modifier.padding(top = 11.dp))
+            TextoTermos(modifier = Modifier.padding(top = 4.dp))
         }
     }
 }
@@ -739,7 +739,7 @@ private fun CabecalhoPrincipal(
     compacto: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val alturaCabecalho = if (compacto) 160.dp else 220.dp
+    val alturaCabecalho = if (compacto) 180.dp else 245.dp
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -789,8 +789,8 @@ private fun CabecalhoPrincipal(
         IlustracaoComunidade(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .fillMaxWidth(if (compacto) 0.46f else 0.52f)
-                .height(if (compacto) 96.dp else 124.dp),
+                .fillMaxWidth(if (compacto) 0.54f else 0.56f)
+                .height(if (compacto) 118.dp else 148.dp),
         )
     }
 }
@@ -802,30 +802,30 @@ private fun LogoSos(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(modifier = Modifier.size(32.dp)) {
+        Box(modifier = Modifier.size(38.dp)) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(width = 32.dp, height = 12.dp)
+                    .size(width = 38.dp, height = 14.dp)
                     .background(RoxoClaro, RoundedCornerShape(7.dp)),
             )
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(width = 12.dp, height = 32.dp)
+                    .size(width = 14.dp, height = 38.dp)
                     .background(RoxoClaro, RoundedCornerShape(7.dp)),
             )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(8.dp)
+                    .size(9.dp)
                     .background(Color(0xFFFF6478), RoundedCornerShape(50)),
             )
         }
         Text(
             text = "SOS+",
             color = Color.White,
-            fontSize = 27.sp,
+            fontSize = 31.sp,
             fontWeight = FontWeight.Bold,
         )
     }
