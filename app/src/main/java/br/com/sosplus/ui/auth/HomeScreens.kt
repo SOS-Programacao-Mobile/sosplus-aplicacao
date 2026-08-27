@@ -62,6 +62,10 @@ private data class CampanhaLocal(
     val titulo: String,
     val detalhe: String,
     val simbolo: String,
+    val etiqueta: String,
+    val progresso: Int,
+    val corInicial: Color,
+    val corFinal: Color,
 )
 
 private data class PublicacaoOng(
@@ -75,6 +79,16 @@ private enum class TipoPublicacao(val rotulo: String) {
     Necessidade("Necessidade"),
 }
 
+private enum class AreaDoador(
+    val icone: String,
+    val rotulo: String,
+) {
+    Inicio("⌂", "Início"),
+    Mapa("⌖", "Mapa"),
+    Carteira("▣", "Carteira"),
+    Perfil("◉", "Perfil"),
+}
+
 @Composable
 fun RotaInicioDoador(
     aoSair: () -> Unit,
@@ -85,31 +99,46 @@ fun RotaInicioDoador(
             CampanhaLocal(
                 organizacao = "Amigos dos Animais",
                 titulo = "Ração para 80 animais",
-                detalhe = "68% da meta alcançada",
+                detalhe = "Precisamos manter a alimentação dos resgatados neste mês.",
                 simbolo = "🐾",
+                etiqueta = "CAMPANHA URGENTE",
+                progresso = 68,
+                corInicial = Color(0xFF553628),
+                corFinal = Color(0xFFD69D4A),
             ),
             CampanhaLocal(
                 organizacao = "Projeto Novo Amanhã",
-                titulo = "Material escolar",
-                detalhe = "Campanha termina em 12 dias",
+                titulo = "Material escolar para 50 crianças",
+                detalhe = "Ajude estudantes da região a começarem o período com o essencial.",
                 simbolo = "📚",
+                etiqueta = "EDUCAÇÃO",
+                progresso = 42,
+                corInicial = Color(0xFF1A5D79),
+                corFinal = Color(0xFF5547A1),
             ),
             CampanhaLocal(
                 organizacao = "Casa do Bem",
                 titulo = "50 cestas básicas",
-                detalhe = "32 famílias já atendidas",
+                detalhe = "Arrecadação para famílias atendidas pela ONG neste mês.",
                 simbolo = "♡",
+                etiqueta = "ALIMENTAÇÃO",
+                progresso = 64,
+                corInicial = Color(0xFF7A3E5B),
+                corFinal = Color(0xFFC87485),
             ),
         )
     }
     var retorno by remember { mutableStateOf<String?>(null) }
+    var areaSelecionada by rememberSaveable { mutableStateOf(AreaDoador.Inicio) }
 
     TelaInicioDoador(
         campanhas = campanhas,
         retorno = retorno,
+        areaSelecionada = areaSelecionada,
         aoAjudar = { campanha ->
             retorno = "Você escolheu ajudar: ${campanha.titulo}."
         },
+        aoSelecionarArea = { areaSelecionada = it },
         aoSair = aoSair,
         modifier = modifier,
     )
@@ -119,123 +148,263 @@ fun RotaInicioDoador(
 private fun TelaInicioDoador(
     campanhas: List<CampanhaLocal>,
     retorno: String?,
+    areaSelecionada: AreaDoador,
     aoAjudar: (CampanhaLocal) -> Unit,
+    aoSelecionarArea: (AreaDoador) -> Unit,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    EstruturaInicio(
+    EstruturaInicioDoador(
+        areaSelecionada = areaSelecionada,
+        aoSelecionarArea = aoSelecionarArea,
         aoSair = aoSair,
         modifier = modifier,
     ) {
-        Text(
-            text = "OLÁ, DOADOR",
-            color = RoxoClaroInicio,
-            style = MaterialTheme.typography.labelMedium,
-            letterSpacing = 1.1.sp,
-        )
-        Text(
-            text = "Faça a diferença\nperto de você",
-            color = TextoInicio,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = 34.sp,
-            modifier = Modifier.padding(top = 7.dp),
-        )
-        Text(
-            text = "●  ONGs em sua cidade",
-            color = TextoSecundarioInicio,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 23.dp, bottom = 5.dp),
-        )
-
-        campanhas.forEach { campanha ->
-            CartaoCampanha(
-                campanha = campanha,
-                aoAjudar = { aoAjudar(campanha) },
-                modifier = Modifier.padding(top = 11.dp),
+        when (areaSelecionada) {
+            AreaDoador.Inicio -> FeedDoador(campanhas, retorno, aoAjudar)
+            AreaDoador.Mapa -> ConteudoMapa()
+            AreaDoador.Carteira -> ConteudoVazio(
+                simbolo = "▣",
+                titulo = "Minha carteira",
+                descricao = "Acompanhe as contribuições e o impacto que você já gerou.",
             )
-        }
-
-        if (retorno != null) {
-            Text(
-                text = retorno,
-                color = CorSucessoInicio,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 14.dp),
-            )
-        }
-
-        Button(
-            onClick = { },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 20.dp)
-                .height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-        ) {
-            Text("Ver todas as ONGs", fontWeight = FontWeight.SemiBold)
+            AreaDoador.Perfil -> ConteudoPerfil(aoSair)
         }
     }
 }
 
 @Composable
-private fun CartaoCampanha(
+private fun FeedDoador(
+    campanhas: List<CampanhaLocal>,
+    retorno: String?,
+    aoAjudar: (CampanhaLocal) -> Unit,
+) {
+    Text("CAMPANHAS PERTO DE VOCÊ", color = RoxoClaroInicio, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.1.sp)
+    Text(
+        text = "Faça a diferença\nperto de você",
+        color = TextoInicio,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.SemiBold,
+        lineHeight = 34.sp,
+        modifier = Modifier.padding(top = 7.dp),
+    )
+    Text(
+        text = "Conheça as ONGs que estão mobilizando a comunidade.",
+        color = TextoSecundarioInicio,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    campanhas.forEach { campanha ->
+        CartaoCampanhaFeed(campanha, { aoAjudar(campanha) }, Modifier.padding(top = 14.dp))
+    }
+    if (retorno != null) {
+        Text(retorno, color = CorSucessoInicio, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
+    }
+}
+
+@Composable
+private fun CartaoCampanhaFeed(
     campanha: CampanhaLocal,
     aoAjudar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = SuperficieInicio),
         border = BorderStroke(1.dp, BordaInicio),
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
-        ) {
+        Column {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .background(RoxoInicio.copy(alpha = 0.2f), RoundedCornerShape(13.dp)),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .background(Brush.linearGradient(listOf(campanha.corInicial, campanha.corFinal))),
             ) {
-                Text(text = campanha.simbolo, fontSize = 20.sp)
-            }
-            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = campanha.organizacao,
-                    color = RoxoClaroInicio,
+                    text = campanha.etiqueta,
+                    color = TextoInicio,
                     style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(15.dp)
+                        .background(FundoInicio.copy(alpha = 0.35f), RoundedCornerShape(30.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
+                Text(campanha.simbolo, fontSize = 48.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 30.dp))
                 Text(
                     text = campanha.titulo,
                     color = TextoInicio,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 25.sp,
+                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(0.72f).padding(15.dp),
                 )
+            }
+            Column(modifier = Modifier.padding(15.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(31.dp).background(RoxoInicio.copy(alpha = 0.26f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(campanha.simbolo, fontSize = 15.sp) }
+                    Column(modifier = Modifier.padding(start = 9.dp)) {
+                        Text(campanha.organizacao, color = TextoInicio, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text("Há pouco tempo · sua cidade", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
                 Text(
                     text = campanha.detalhe,
                     color = TextoSecundarioInicio,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 3.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
+                Row(modifier = Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Meta arrecadada", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+                            Text("${campanha.progresso}%", color = RoxoClaroInicio, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(6.dp)
+                                .background(BordaInicio, RoundedCornerShape(10.dp)),
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(campanha.progresso / 100f).height(6.dp)
+                                    .background(RoxoClaroInicio, RoundedCornerShape(10.dp)),
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = aoAjudar,
+                        modifier = Modifier.padding(start = 13.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
+                    ) { Text("Ajudar", style = MaterialTheme.typography.labelMedium) }
+                }
             }
-            Button(
-                onClick = aoAjudar,
-                modifier = Modifier.heightIn(min = 44.dp),
-                shape = RoundedCornerShape(11.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+        }
+    }
+}
+
+@Composable
+private fun ConteudoMapa() {
+    TituloAreaDoador("ONGs no mapa", "Explore instituições e campanhas próximas de você.")
+    Box(
+        modifier = Modifier.fillMaxWidth().height(300.dp).padding(top = 18.dp)
+            .background(Brush.linearGradient(listOf(Color(0xFF173651), Color(0xFF285749))), RoundedCornerShape(22.dp)),
+    ) {
+        Text("⌖", color = TextoInicio.copy(alpha = 0.4f), fontSize = 42.sp, modifier = Modifier.align(Alignment.Center))
+        PinoMapa("🐾", Modifier.align(Alignment.TopStart).padding(start = 58.dp, top = 72.dp))
+        PinoMapa("♥", Modifier.align(Alignment.Center).padding(start = 72.dp, top = 40.dp))
+        PinoMapa("📚", Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 63.dp))
+    }
+}
+
+@Composable
+private fun ConteudoPerfil(aoSair: () -> Unit) {
+    ConteudoVazio("◉", "Meu perfil", "Gerencie seus dados e veja as ONGs que você apoia.")
+    OutlinedButton(
+        onClick = aoSair,
+        modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(48.dp),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, BordaInicio),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextoSecundarioInicio),
+    ) { Text("Sair da conta") }
+}
+
+@Composable
+private fun ConteudoVazio(simbolo: String, titulo: String, descricao: String) {
+    TituloAreaDoador(titulo, descricao)
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(top = 22.dp),
+        color = SuperficieInicio,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, BordaInicio),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(28.dp)) {
+            Text(simbolo, color = RoxoClaroInicio, fontSize = 39.sp)
+            Text("Em breve", color = TextoInicio, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+            Text("Este espaço será preenchido conforme você usar o SOS+.", color = TextoSecundarioInicio, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 7.dp))
+        }
+    }
+}
+
+@Composable
+private fun TituloAreaDoador(titulo: String, descricao: String) {
+    Text(titulo, color = TextoInicio, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+    Text(descricao, color = TextoSecundarioInicio, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+}
+
+@Composable
+private fun PinoMapa(simbolo: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.size(38.dp).background(RoxoInicio, RoundedCornerShape(19.dp)),
+        contentAlignment = Alignment.Center,
+    ) { Text(simbolo, fontSize = 16.sp) }
+}
+
+@Composable
+private fun EstruturaInicioDoador(
+    areaSelecionada: AreaDoador,
+    aoSelecionarArea: (AreaDoador) -> Unit,
+    aoSair: () -> Unit,
+    modifier: Modifier = Modifier,
+    conteudo: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier.fillMaxSize().background(
+            Brush.radialGradient(colors = listOf(RoxoInicio.copy(alpha = 0.19f), FundoInicio), radius = 900f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 20.dp).padding(bottom = 104.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Ajudar", style = MaterialTheme.typography.labelMedium)
+                LogoInicio()
+                Text("Nova Friburgo, RJ", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+            }
+            Spacer(modifier = Modifier.height(30.dp))
+            conteudo()
+        }
+        NavegacaoDoador(
+            areaSelecionada,
+            aoSelecionarArea,
+            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun NavegacaoDoador(
+    areaSelecionada: AreaDoador,
+    aoSelecionarArea: (AreaDoador) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = SuperficieInicio.copy(alpha = 0.97f),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.dp, BordaInicio),
+    ) {
+        Row(modifier = Modifier.padding(7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            AreaDoador.entries.forEach { area ->
+                val selecionada = area == areaSelecionada
+                TextButton(
+                    onClick = { aoSelecionarArea(area) },
+                    modifier = Modifier.weight(1f).height(58.dp)
+                        .background(if (selecionada) RoxoInicio.copy(alpha = 0.34f) else Color.Transparent, RoundedCornerShape(20.dp)),
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(area.icone, color = if (selecionada) TextoInicio else TextoSecundarioInicio, fontSize = 19.sp)
+                        Text(area.rotulo, color = if (selecionada) TextoInicio else TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
     }
