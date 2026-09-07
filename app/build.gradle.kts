@@ -22,7 +22,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "API_BASE_URL", "\"${providers.gradleProperty("apiBaseUrl").getOrElse("http://10.0.2.2:3000")}\"")
+        }
         release {
+            buildConfigField("String", "API_BASE_URL", "\"${providers.gradleProperty("apiBaseUrl").getOrElse("https://api.sosplus.example")}\"")
             optimization {
                 enable = false
             }
@@ -34,6 +38,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
