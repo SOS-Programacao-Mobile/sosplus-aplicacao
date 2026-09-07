@@ -1,5 +1,7 @@
 package br.com.sosplus.ui.auth
 
+import br.com.sosplus.data.UsuarioAutenticado
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -91,6 +93,7 @@ private enum class AreaDoador(
 
 @Composable
 fun RotaInicioDoador(
+    usuario: UsuarioAutenticado,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -132,6 +135,7 @@ fun RotaInicioDoador(
     var areaSelecionada by rememberSaveable { mutableStateOf(AreaDoador.Inicio) }
 
     TelaInicioDoador(
+        usuario = usuario,
         campanhas = campanhas,
         retorno = retorno,
         areaSelecionada = areaSelecionada,
@@ -146,6 +150,7 @@ fun RotaInicioDoador(
 
 @Composable
 private fun TelaInicioDoador(
+    usuario: UsuarioAutenticado,
     campanhas: List<CampanhaLocal>,
     retorno: String?,
     areaSelecionada: AreaDoador,
@@ -160,6 +165,8 @@ private fun TelaInicioDoador(
         aoSair = aoSair,
         modifier = modifier,
     ) {
+        Text("Olá, ${usuario.nome}", color = TextoInicio, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(12.dp))
         when (areaSelecionada) {
             AreaDoador.Inicio -> FeedDoador(campanhas, retorno, aoAjudar)
             AreaDoador.Mapa -> ConteudoMapa()
@@ -168,7 +175,7 @@ private fun TelaInicioDoador(
                 titulo = "Minha carteira",
                 descricao = "Acompanhe as contribuições e o impacto que você já gerou.",
             )
-            AreaDoador.Perfil -> ConteudoPerfil(aoSair)
+            AreaDoador.Perfil -> ConteudoPerfil(usuario, aoSair)
         }
     }
 }
@@ -302,8 +309,9 @@ private fun ConteudoMapa() {
 }
 
 @Composable
-private fun ConteudoPerfil(aoSair: () -> Unit) {
-    ConteudoVazio("◉", "Meu perfil", "Gerencie seus dados e veja as ONGs que você apoia.")
+private fun ConteudoPerfil(usuario: UsuarioAutenticado, aoSair: () -> Unit) {
+    TituloAreaDoador("Meu perfil", usuario.nome)
+    Text(usuario.email, color = TextoSecundarioInicio, modifier = Modifier.padding(top = 12.dp))
     OutlinedButton(
         onClick = aoSair,
         modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(48.dp),
@@ -412,6 +420,7 @@ private fun NavegacaoDoador(
 
 @Composable
 fun RotaInicioOng(
+    usuario: UsuarioAutenticado,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -432,6 +441,7 @@ fun RotaInicioOng(
     val tipoEdicao = nomeTipoEdicao?.let(TipoPublicacao::valueOf)
 
     TelaInicioOng(
+        usuario = usuario,
         publicacoes = publicacoes,
         tipoEdicao = tipoEdicao,
         titulo = titulo,
@@ -484,6 +494,7 @@ fun RotaInicioOng(
 
 @Composable
 private fun TelaInicioOng(
+    usuario: UsuarioAutenticado,
     publicacoes: List<PublicacaoOng>,
     tipoEdicao: TipoPublicacao?,
     titulo: String,
@@ -508,14 +519,14 @@ private fun TelaInicioOng(
             letterSpacing = 1.1.sp,
         )
         Text(
-            text = "Olá, mãos que ajudam",
+            text = "Olá, ${usuario.nome}",
             color = TextoInicio,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 7.dp),
         )
         Text(
-            text = "Divulgue necessidades e acompanhe suas campanhas.",
+            text = "${usuario.email}\nCNPJ: ${usuario.cnpj.orEmpty()}",
             color = TextoSecundarioInicio,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp, bottom = 22.dp),

@@ -70,6 +70,16 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.sosplus.ui.theme.SosTheme
+import br.com.sosplus.data.AuthRepository
+import br.com.sosplus.data.AuthApiException
+import br.com.sosplus.data.Sessao
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.io.IOException
 
 private val FundoAplicativo = Color(0xFF111020)
 private val FundoPainel = Color(0xFF090E1B)
@@ -101,9 +111,22 @@ data class RetornoAutenticacao(
 
 @Composable
 fun AplicativoSos(modifier: Modifier = Modifier) {
-    // Controla qual tela local está visível enquanto não há navegação por rotas.
-    var destino by rememberSaveable { mutableStateOf(DestinoAutenticacao.Login) }
+    // A sessão fica apenas em memória; nenhuma senha ou token é gravado no dispositivo.
+    var destino by remember { mutableStateOf(DestinoAutenticacao.Login) }
     var perfilSelecionado by rememberSaveable { mutableStateOf(PerfilUsuario.Doador) }
+    var sessao by remember { mutableStateOf<Sessao?>(null) }
+    val repository = remember { AuthRepository() }
+    val scope = rememberCoroutineScope()
+    val sair: () -> Unit = {
+        val token = sessao?.token
+        sessao = null
+        destino = DestinoAutenticacao.Login
+        if (token != null) scope.launch {
+            try { repository.sair(token) }
+            catch (error: CancellationException) { throw error }
+            catch (_: IOException) { /* A sessão local já foi encerrada; a remota expira em 24 horas. */ }
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -116,8 +139,9 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
                 perfilSelecionado = perfilSelecionado,
                 aoAlterarPerfil = { perfilSelecionado = it },
                 aoCriarConta = { destino = DestinoAutenticacao.Cadastro },
-                aoConcluirLogin = { perfil ->
-                    destino = if (perfil == PerfilUsuario.Doador) {
+                aoConcluirLogin = { autenticacao ->
+                    sessao = autenticacao
+                    destino = if (autenticacao.usuario.tipo == "DOADOR") {
                         DestinoAutenticacao.InicioDoador
                     } else {
                         DestinoAutenticacao.InicioOng
@@ -133,13 +157,15 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
             )
 
             DestinoAutenticacao.InicioDoador -> RotaInicioDoador(
+                usuario = requireNotNull(sessao).usuario,
                 modifier = Modifier.padding(scaffoldPadding),
-                aoSair = { destino = DestinoAutenticacao.Login },
+                aoSair = sair,
             )
 
             DestinoAutenticacao.InicioOng -> RotaInicioOng(
+                usuario = requireNotNull(sessao).usuario,
                 modifier = Modifier.padding(scaffoldPadding),
-                aoSair = { destino = DestinoAutenticacao.Login },
+                aoSair = sair,
             )
         }
     }
@@ -150,14 +176,19 @@ private fun RotaLogin(
     perfilSelecionado: PerfilUsuario,
     aoAlterarPerfil: (PerfilUsuario) -> Unit,
     aoCriarConta: () -> Unit,
-    aoConcluirLogin: (PerfilUsuario) -> Unit,
+    aoConcluirLogin: (Sessao) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var usuario by rememberSaveable { mutableStateOf("") }
-    var senha by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("login_email", android.content.Context.MODE_PRIVATE) }
+    var usuario by rememberSaveable { mutableStateOf(preferences.getString("email", "").orEmpty()) }
+    var senha by remember { mutableStateOf("") }
     var senhaVisivel by rememberSaveable { mutableStateOf(false) }
-    var lembrarUsuario by rememberSaveable { mutableStateOf(false) }
+    var lembrarUsuario by rememberSaveable { mutableStateOf(preferences.contains("email")) }
     var retorno by remember { mutableStateOf<RetornoAutenticacao?>(null) }
+    var carregando by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val repository = remember { AuthRepository() }
 
     TelaLogin(
         perfilSelecionado = perfilSelecionado,
@@ -166,11 +197,14 @@ private fun RotaLogin(
         senhaVisivel = senhaVisivel,
         lembrarUsuario = lembrarUsuario,
         retorno = retorno,
+        carregando = carregando,
         aoAlterarPerfil = {
-            aoAlterarPerfil(it)
-            usuario = ""
-            senha = ""
-            retorno = null
+            if (!carregando) {
+                aoAlterarPerfil(it)
+                usuario = ""
+                senha = ""
+                retorno = null
+            }
         },
         aoAlterarUsuario = {
             usuario = it
@@ -183,27 +217,34 @@ private fun RotaLogin(
         aoAlternarVisibilidadeSenha = { senhaVisivel = !senhaVisivel },
         aoAlterarLembrarUsuario = { lembrarUsuario = it },
         aoRecuperarSenha = {
-            retorno = if (perfilSelecionado == PerfilUsuario.Doador) {
-                RetornoAutenticacao("Acesso de demonstração: usuário admin e senha 1234.")
-            } else {
-                RetornoAutenticacao("Acesso de demonstração: usuário ong e senha 1234.")
-            }
+            retorno = RetornoAutenticacao("A recuperação de senha ainda não está disponível.")
         },
         aoEntrar = {
-            retorno = when {
-                usuario.isBlank() || senha.isBlank() -> {
-                    RetornoAutenticacao("Preencha o usuário e a senha.")
+            if (!carregando) {
+                if (usuario.isBlank() || senha.isBlank()) {
+                    retorno = RetornoAutenticacao("Preencha o e-mail e a senha.")
+                } else {
+                    carregando = true
+                    retorno = null
+                    val emailEnviado = usuario
+                    val senhaEnviada = senha
+                    val tipo = if (perfilSelecionado == PerfilUsuario.Doador) "DOADOR" else "ONG"
+                    scope.launch {
+                        try {
+                            val sessao = repository.entrar(emailEnviado, senhaEnviada, tipo)
+                            preferences.edit().apply {
+                                if (lembrarUsuario) putString("email", sessao.usuario.email) else remove("email")
+                            }.apply()
+                            senha = ""
+                            aoConcluirLogin(sessao)
+                        } catch (error: CancellationException) { throw error }
+                        catch (error: IOException) { retorno = erroDaApi(error) }
+                        finally { carregando = false }
+                    }
                 }
-
-                credenciaisSaoValidas(perfilSelecionado, usuario, senha) -> {
-                    aoConcluirLogin(perfilSelecionado)
-                    null
-                }
-
-                else -> RetornoAutenticacao("Acesso incorreto para o perfil selecionado.")
             }
         },
-        aoCriarConta = aoCriarConta,
+        aoCriarConta = { if (!carregando) aoCriarConta() },
         modifier = modifier,
     )
 }
@@ -217,27 +258,37 @@ private fun RotaCadastro(
 ) {
     var nome by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
-    var senha by rememberSaveable { mutableStateOf("") }
-    var confirmacao by rememberSaveable { mutableStateOf("") }
+    var cnpj by rememberSaveable { mutableStateOf("") }
+    var senha by remember { mutableStateOf("") }
+    var confirmacao by remember { mutableStateOf("") }
     var senhaVisivel by rememberSaveable { mutableStateOf(false) }
     var retorno by remember { mutableStateOf<RetornoAutenticacao?>(null) }
+    var carregando by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val repository = remember { AuthRepository() }
 
     TelaCadastro(
         perfilSelecionado = perfilSelecionado,
         nome = nome,
         email = email,
+        cnpj = cnpj,
         senha = senha,
         confirmacao = confirmacao,
         senhaVisivel = senhaVisivel,
         retorno = retorno,
+        carregando = carregando,
         aoAlterarPerfil = {
-            aoAlterarPerfil(it)
-            nome = ""
-            email = ""
-            senha = ""
-            confirmacao = ""
-            retorno = null
+            if (!carregando) {
+                aoAlterarPerfil(it)
+                nome = ""
+                email = ""
+                senha = ""
+                confirmacao = ""
+                cnpj = ""
+                retorno = null
+            }
         },
+        aoAlterarCnpj = { cnpj = it; retorno = null },
         aoAlterarNome = {
             nome = it
             retorno = null
@@ -256,15 +307,26 @@ private fun RotaCadastro(
         },
         aoAlternarVisibilidadeSenha = { senhaVisivel = !senhaVisivel },
         aoCriarConta = {
-            retorno = validarCadastro(
-                perfil = perfilSelecionado,
-                nome = nome,
-                email = email,
-                senha = senha,
-                confirmacao = confirmacao,
-            )
+            if (!carregando) {
+                val validacao = validarCadastro(perfilSelecionado, nome, email, senha, confirmacao, cnpj)
+                retorno = if (validacao.sucesso) null else validacao
+                if (validacao.sucesso) {
+                    carregando = true
+                    val tipo = if (perfilSelecionado == PerfilUsuario.Doador) "DOADOR" else "ONG"
+                    scope.launch {
+                        try {
+                            repository.cadastrar(nome, email, senha, confirmacao, tipo, cnpj)
+                            senha = ""
+                            confirmacao = ""
+                            retorno = RetornoAutenticacao("Conta salva! Entre com seu e-mail e senha.", sucesso = true)
+                        } catch (error: CancellationException) { throw error }
+                        catch (error: IOException) { retorno = erroDaApi(error) }
+                        finally { carregando = false }
+                    }
+                }
+            }
         },
-        aoVoltarLogin = aoVoltarLogin,
+        aoVoltarLogin = { if (!carregando) aoVoltarLogin() },
         modifier = modifier,
     )
 }
@@ -285,6 +347,7 @@ private fun TelaLogin(
     aoRecuperarSenha: () -> Unit,
     aoEntrar: () -> Unit,
     aoCriarConta: () -> Unit,
+    carregando: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     EstruturaTelaAutenticacao(
@@ -318,16 +381,9 @@ private fun TelaLogin(
         CampoTextoSos(
             valor = usuario,
             aoAlterarValor = aoAlterarUsuario,
-            rotulo = if (perfilSelecionado == PerfilUsuario.Doador) {
-                "Usuário"
-            } else {
-                "CNPJ ou e-mail institucional"
-            },
-            textoOrientativo = if (perfilSelecionado == PerfilUsuario.Doador) {
-                "Digite seu usuário"
-            } else {
-                "Digite o acesso da ONG"
-            },
+            rotulo = "E-mail",
+            textoOrientativo = "Digite seu e-mail cadastrado",
+            keyboardType = KeyboardType.Email,
             simboloPrincipal = if (perfilSelecionado == PerfilUsuario.Doador) "@" else "O",
         )
         Spacer(modifier = Modifier.height(9.dp))
@@ -359,7 +415,7 @@ private fun TelaLogin(
                         ),
                     )
                     Text(
-                        text = "Lembrar de mim",
+                        text = "Lembrar e-mail",
                         color = TextoSecundario,
                         style = MaterialTheme.typography.labelSmall,
                     )
@@ -376,21 +432,9 @@ private fun TelaLogin(
 
         MensagemRetorno(retorno = retorno)
 
-        if (!tecladoVisivel) {
-            Text(
-                text = if (perfilSelecionado == PerfilUsuario.Doador) {
-                    "Teste: admin / 1234"
-                } else {
-                    "Teste: ong / 1234"
-                },
-                color = TextoSecundario.copy(alpha = 0.82f),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(bottom = 7.dp),
-            )
-        }
-
         Button(
             onClick = aoEntrar,
+            enabled = !carregando,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -398,7 +442,7 @@ private fun TelaLogin(
             colors = ButtonDefaults.buttonColors(containerColor = RoxoPrincipal),
         ) {
             Text(
-                text = if (perfilSelecionado == PerfilUsuario.Doador) {
+                text = if (carregando) "Entrando..." else if (perfilSelecionado == PerfilUsuario.Doador) {
                     "Entrar como doador"
                 } else {
                     "Entrar como ONG"
@@ -438,6 +482,7 @@ private fun TelaCadastro(
     perfilSelecionado: PerfilUsuario,
     nome: String,
     email: String,
+    cnpj: String,
     senha: String,
     confirmacao: String,
     senhaVisivel: Boolean,
@@ -445,11 +490,13 @@ private fun TelaCadastro(
     aoAlterarPerfil: (PerfilUsuario) -> Unit,
     aoAlterarNome: (String) -> Unit,
     aoAlterarEmail: (String) -> Unit,
+    aoAlterarCnpj: (String) -> Unit,
     aoAlterarSenha: (String) -> Unit,
     aoAlterarConfirmacao: (String) -> Unit,
     aoAlternarVisibilidadeSenha: () -> Unit,
     aoCriarConta: () -> Unit,
     aoVoltarLogin: () -> Unit,
+    carregando: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     EstruturaTelaAutenticacao(
@@ -512,12 +559,22 @@ private fun TelaCadastro(
             simboloPrincipal = "@",
             keyboardType = KeyboardType.Email,
         )
+        if (perfilSelecionado == PerfilUsuario.Ong) {
+            Spacer(modifier = Modifier.height(8.dp))
+            CampoTextoSos(
+                valor = cnpj,
+                aoAlterarValor = aoAlterarCnpj,
+                rotulo = "CNPJ obrigatório",
+                textoOrientativo = "CNPJ da organização",
+                simboloPrincipal = "#",
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         CampoSenhaSos(
             valor = senha,
             aoAlterarValor = aoAlterarSenha,
             rotulo = "Senha",
-            textoOrientativo = "Mínimo de 6 caracteres",
+            textoOrientativo = "Mínimo de 8 caracteres",
             senhaVisivel = senhaVisivel,
             aoAlternarVisibilidadeSenha = aoAlternarVisibilidadeSenha,
         )
@@ -535,6 +592,7 @@ private fun TelaCadastro(
 
         Button(
             onClick = aoCriarConta,
+            enabled = !carregando,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -542,7 +600,7 @@ private fun TelaCadastro(
             colors = ButtonDefaults.buttonColors(containerColor = RoxoPrincipal),
         ) {
             Text(
-                text = if (perfilSelecionado == PerfilUsuario.Doador) {
+                text = if (carregando) "Salvando..." else if (perfilSelecionado == PerfilUsuario.Doador) {
                     "Criar minha conta"
                 } else {
                     "Cadastrar ONG"
@@ -722,6 +780,7 @@ private fun EstruturaTelaAutenticacao(
                 modifier = Modifier
                     .fillMaxSize()
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
                     .padding(
                         horizontal = 20.dp,
@@ -1100,44 +1159,10 @@ private fun TextoTermos(modifier: Modifier = Modifier) {
     )
 }
 
-// Credenciais locais usadas somente enquanto o backend não está conectado.
-internal fun credenciaisSaoValidas(
-    perfil: PerfilUsuario,
-    usuario: String,
-    senha: String,
-): Boolean {
-    val usuarioEsperado = if (perfil == PerfilUsuario.Doador) "admin" else "ong"
-    return usuario.trim().lowercase() == usuarioEsperado && senha == "1234"
-}
-
-private fun validarCadastro(
-    perfil: PerfilUsuario,
-    nome: String,
-    email: String,
-    senha: String,
-    confirmacao: String,
-): RetornoAutenticacao {
-    return when {
-        nome.isBlank() || email.isBlank() || senha.isBlank() || confirmacao.isBlank() -> {
-            RetornoAutenticacao("Preencha todos os campos.")
-        }
-
-        !email.contains("@") || !email.substringAfter("@").contains(".") -> {
-            RetornoAutenticacao("Digite um e-mail válido.")
-        }
-
-        senha.length < 6 -> RetornoAutenticacao("A senha deve ter pelo menos 6 caracteres.")
-        senha != confirmacao -> RetornoAutenticacao("As senhas não são iguais.")
-        else -> RetornoAutenticacao(
-            mensagem = if (perfil == PerfilUsuario.Doador) {
-                "Conta criada com sucesso! Você já pode apoiar ONGs."
-            } else {
-                "ONG cadastrada com sucesso! Você já pode divulgar campanhas."
-            },
-            sucesso = true,
-        )
-    }
-}
+private fun erroDaApi(error: IOException): RetornoAutenticacao = RetornoAutenticacao(
+    if (error is AuthApiException) error.message.orEmpty()
+    else "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente."
+)
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
