@@ -1,9 +1,23 @@
 package br.com.sosplus.ui.auth
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.location.Location
+import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
 import br.com.sosplus.data.UsuarioAutenticado
+import br.com.sosplus.data.DadosPessoaisUsuario
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,13 +33,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,30 +54,45 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
-private val FundoInicio = Color(0xFF090E1B)
-private val SuperficieInicio = Color(0xFF11182A)
-private val BordaInicio = Color(0xFF303950)
-private val RoxoInicio = Color(0xFF803DF1)
-private val RoxoClaroInicio = Color(0xFF9C64FF)
-private val TextoInicio = Color(0xFFF8F7FF)
-private val TextoSecundarioInicio = Color(0xFFAAA8BD)
-private val CorSucessoInicio = Color(0xFF62DFA4)
+val FundoInicio = Color(0xFF090E1B)
+val SuperficieInicio = Color(0xFF11182A)
+val BordaInicio = Color(0xFF303950)
+val RoxoInicio = Color(0xFF803DF1)
+val RoxoClaroInicio = Color(0xFF9C64FF)
+val TextoInicio = Color(0xFFF8F7FF)
+val TextoSecundarioInicio = Color(0xFFAAA8BD)
+val CorSucessoInicio = Color(0xFF62DFA4)
 
 private data class CampanhaLocal(
     val organizacao: String,
@@ -81,7 +116,7 @@ private enum class TipoPublicacao(val rotulo: String) {
     Necessidade("Necessidade"),
 }
 
-private enum class AreaDoador(
+enum class AreaDoador(
     val icone: String,
     val rotulo: String,
 ) {
@@ -91,9 +126,29 @@ private enum class AreaDoador(
     Perfil("◉", "Perfil"),
 }
 
+private enum class OpcaoPerfil(
+    val simbolo: String,
+    val titulo: String,
+    val descricao: String,
+) {
+    ConfigurarPerfil("◉", "Configurar perfil", "Foto e preferências da conta"),
+    Pagamentos("\$", "Pagamentos e carteira", "Formas de pagamento e histórico"),
+    Informacoes("i", "Informações pessoais", "Dados vinculados à sua conta"),
+    Senha("↻", "Redefinir senha", "Atualize sua senha com segurança"),
+}
+
+private enum class TelaPerfil { Principal, InformacoesPessoais, RedefinirSenha }
+
+private data class RetornoPerfil(val mensagem: String, val sucesso: Boolean)
+
 @Composable
 fun RotaInicioDoador(
     usuario: UsuarioAutenticado,
+    fotoPerfil: ByteArray?,
+    aoSalvarFotoPerfil: suspend (ByteArray, String) -> Unit,
+    aoRedefinirSenha: suspend (String, String, String) -> Unit,
+    aoCarregarDadosPessoais: suspend () -> DadosPessoaisUsuario,
+    aoSalvarDadosPessoais: suspend (DadosPessoaisUsuario) -> DadosPessoaisUsuario,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -133,16 +188,31 @@ fun RotaInicioDoador(
     }
     var retorno by remember { mutableStateOf<String?>(null) }
     var areaSelecionada by rememberSaveable { mutableStateOf(AreaDoador.Inicio) }
+    var telaPerfil by rememberSaveable { mutableStateOf(TelaPerfil.Principal) }
+
+    BackHandler(enabled = areaSelecionada == AreaDoador.Perfil && telaPerfil != TelaPerfil.Principal) {
+        telaPerfil = TelaPerfil.Principal
+    }
 
     TelaInicioDoador(
         usuario = usuario,
+        fotoPerfil = fotoPerfil,
         campanhas = campanhas,
         retorno = retorno,
         areaSelecionada = areaSelecionada,
         aoAjudar = { campanha ->
             retorno = "Você escolheu ajudar: ${campanha.titulo}."
         },
-        aoSelecionarArea = { areaSelecionada = it },
+        aoSelecionarArea = {
+            areaSelecionada = it
+            telaPerfil = TelaPerfil.Principal
+        },
+        aoSalvarFotoPerfil = aoSalvarFotoPerfil,
+        aoRedefinirSenha = aoRedefinirSenha,
+        aoCarregarDadosPessoais = aoCarregarDadosPessoais,
+        aoSalvarDadosPessoais = aoSalvarDadosPessoais,
+        telaPerfil = telaPerfil,
+        aoAlterarTelaPerfil = { telaPerfil = it },
         aoSair = aoSair,
         modifier = modifier,
     )
@@ -151,31 +221,74 @@ fun RotaInicioDoador(
 @Composable
 private fun TelaInicioDoador(
     usuario: UsuarioAutenticado,
+    fotoPerfil: ByteArray?,
     campanhas: List<CampanhaLocal>,
     retorno: String?,
     areaSelecionada: AreaDoador,
     aoAjudar: (CampanhaLocal) -> Unit,
     aoSelecionarArea: (AreaDoador) -> Unit,
+    aoSalvarFotoPerfil: suspend (ByteArray, String) -> Unit,
+    aoRedefinirSenha: suspend (String, String, String) -> Unit,
+    aoCarregarDadosPessoais: suspend () -> DadosPessoaisUsuario,
+    aoSalvarDadosPessoais: suspend (DadosPessoaisUsuario) -> DadosPessoaisUsuario,
+    telaPerfil: TelaPerfil,
+    aoAlterarTelaPerfil: (TelaPerfil) -> Unit,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    EstruturaInicioDoador(
-        areaSelecionada = areaSelecionada,
-        aoSelecionarArea = aoSelecionarArea,
-        aoSair = aoSair,
-        modifier = modifier,
-    ) {
-        Text("Olá, ${usuario.nome}", color = TextoInicio, style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(12.dp))
-        when (areaSelecionada) {
-            AreaDoador.Inicio -> FeedDoador(campanhas, retorno, aoAjudar)
-            AreaDoador.Mapa -> ConteudoMapa()
-            AreaDoador.Carteira -> ConteudoVazio(
-                simbolo = "▣",
-                titulo = "Minha carteira",
-                descricao = "Acompanhe as contribuições e o impacto que você já gerou.",
-            )
-            AreaDoador.Perfil -> ConteudoPerfil(usuario, aoSair)
+    if (areaSelecionada == AreaDoador.Mapa) {
+        TelaMapaDoador(
+            areaSelecionada = areaSelecionada,
+            aoSelecionarArea = aoSelecionarArea,
+            localizacaoUsuario = usuario.localizacao,
+            modifier = modifier,
+        )
+    } else {
+        EstruturaInicioDoador(
+            areaSelecionada = areaSelecionada,
+            aoSelecionarArea = aoSelecionarArea,
+            aoSair = aoSair,
+            localizacaoUsuario = usuario.localizacao,
+            modifier = modifier,
+            exibirCabecalho = areaSelecionada != AreaDoador.Perfil || telaPerfil == TelaPerfil.Principal,
+            exibirNavegacao = areaSelecionada != AreaDoador.Perfil || telaPerfil == TelaPerfil.Principal,
+        ) {
+            when (areaSelecionada) {
+                AreaDoador.Inicio -> {
+                    Text("Olá, ${usuario.nome}", color = TextoInicio, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FeedDoador(campanhas, retorno, aoAjudar)
+                }
+                AreaDoador.Carteira -> ConteudoVazio(
+                    simbolo = "▣",
+                    titulo = "Minha carteira",
+                    descricao = "Acompanhe as contribuições e o impacto que você já gerou.",
+                )
+                AreaDoador.Perfil -> when (telaPerfil) {
+                    TelaPerfil.Principal -> ConteudoPerfil(
+                        usuario = usuario,
+                        fotoPerfil = fotoPerfil,
+                        aoSalvarFotoPerfil = aoSalvarFotoPerfil,
+                        aoAbrirCarteira = { aoSelecionarArea(AreaDoador.Carteira) },
+                        aoAbrirInformacoes = { aoAlterarTelaPerfil(TelaPerfil.InformacoesPessoais) },
+                        aoAbrirRedefinicaoSenha = { aoAlterarTelaPerfil(TelaPerfil.RedefinirSenha) },
+                        aoSair = aoSair,
+                    )
+                    TelaPerfil.InformacoesPessoais -> TelaInformacoesPessoais(
+                        usuario = usuario,
+                        fotoPerfil = fotoPerfil,
+                        aoCarregar = aoCarregarDadosPessoais,
+                        aoSalvar = aoSalvarDadosPessoais,
+                        aoVoltar = { aoAlterarTelaPerfil(TelaPerfil.Principal) },
+                    )
+                    TelaPerfil.RedefinirSenha -> TelaRedefinirSenhaPerfil(
+                        email = usuario.email,
+                        aoRedefinirSenha = aoRedefinirSenha,
+                        aoVoltar = { aoAlterarTelaPerfil(TelaPerfil.Principal) },
+                    )
+                }
+                AreaDoador.Mapa -> {}
+            }
         }
     }
 }
@@ -293,33 +406,658 @@ private fun CartaoCampanhaFeed(
         }
     }
 }
-
 @Composable
 private fun ConteudoMapa() {
-    TituloAreaDoador("ONGs no mapa", "Explore instituições e campanhas próximas de você.")
-    Box(
-        modifier = Modifier.fillMaxWidth().height(300.dp).padding(top = 18.dp)
-            .background(Brush.linearGradient(listOf(Color(0xFF173651), Color(0xFF285749))), RoundedCornerShape(22.dp)),
+    TituloAreaDoador("ONGs no mapa", "Explore instituições próximas de você.")
+    MapaAberto()
+}
+
+@Composable
+private fun ConteudoPerfil(
+    usuario: UsuarioAutenticado,
+    fotoPerfil: ByteArray?,
+    aoSalvarFotoPerfil: suspend (ByteArray, String) -> Unit,
+    aoAbrirCarteira: () -> Unit,
+    aoAbrirInformacoes: () -> Unit,
+    aoAbrirRedefinicaoSenha: () -> Unit,
+    aoSair: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var salvandoFoto by remember { mutableStateOf(false) }
+    var retorno by remember { mutableStateOf<RetornoPerfil?>(null) }
+    var opcaoAberta by remember { mutableStateOf<OpcaoPerfil?>(null) }
+    val bitmap by produceState<Bitmap?>(initialValue = null, fotoPerfil) {
+        value = withContext(Dispatchers.Default) {
+            fotoPerfil?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        }
+    }
+    val iniciais = remember(usuario.nome) {
+        usuario.nome.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("")
+            .ifBlank { "?" }
+    }
+
+    val selecionarFoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null && !salvandoFoto) {
+            salvandoFoto = true
+            retorno = null
+            scope.launch {
+                try {
+                    val foto = processarFotoPerfil(context, uri)
+                    aoSalvarFotoPerfil(foto.conteudo, foto.mimeType)
+                    retorno = RetornoPerfil("Foto de perfil atualizada.", sucesso = true)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    retorno = RetornoPerfil(error.message ?: "Não foi possível atualizar a foto.", sucesso = false)
+                } finally {
+                    salvandoFoto = false
+                }
+            }
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SuperficieInicio,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, BordaInicio),
     ) {
-        Text("⌖", color = TextoInicio.copy(alpha = 0.4f), fontSize = 42.sp, modifier = Modifier.align(Alignment.Center))
-        PinoMapa("🐾", Modifier.align(Alignment.TopStart).padding(start = 58.dp, top = 72.dp))
-        PinoMapa("♥", Modifier.align(Alignment.Center).padding(start = 72.dp, top = 40.dp))
-        PinoMapa("📚", Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 63.dp))
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(
+                    modifier = Modifier
+                        .size(104.dp)
+                        .clickable(enabled = !salvandoFoto) {
+                            selecionarFoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                    shape = CircleShape,
+                    color = RoxoInicio.copy(alpha = 0.24f),
+                    border = BorderStroke(2.dp, RoxoClaroInicio.copy(alpha = 0.8f)),
+                ) {
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = requireNotNull(bitmap).asImageBitmap(),
+                            contentDescription = "Foto de perfil de ${usuario.nome}",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(
+                                Brush.linearGradient(listOf(RoxoInicio, Color(0xFF4B4FA0))),
+                            ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(iniciais, color = TextoInicio, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                if (salvandoFoto) {
+                    Surface(
+                        modifier = Modifier.size(104.dp),
+                        shape = CircleShape,
+                        color = FundoInicio.copy(alpha = 0.72f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                color = RoxoClaroInicio,
+                                strokeWidth = 3.dp,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = usuario.nome,
+                color = TextoInicio,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 14.dp),
+            )
+            Text(
+                text = usuario.email,
+                color = TextoSecundarioInicio,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+            Surface(
+                color = CorSucessoInicio.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.padding(top = 10.dp),
+            ) {
+                Text(
+                    text = "Conta de doador",
+                    color = CorSucessoInicio,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+            OutlinedButton(
+                onClick = {
+                    selecionarFoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                enabled = !salvandoFoto,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, RoxoClaroInicio.copy(alpha = 0.7f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = RoxoClaroInicio),
+                modifier = Modifier.padding(top = 14.dp),
+            ) {
+                Text(if (fotoPerfil == null) "Adicionar foto" else "Alterar foto")
+            }
+            Text(
+                "A imagem é otimizada antes do envio para evitar lentidão.",
+                color = TextoSecundarioInicio,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 7.dp),
+            )
+            retorno?.let { estado ->
+                Text(
+                    text = estado.mensagem,
+                    color = if (estado.sucesso) CorSucessoInicio else Color(0xFFFF8E9B),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+            }
+        }
+    }
+
+    Text(
+        "CONTA E PREFERÊNCIAS",
+        color = RoxoClaroInicio,
+        style = MaterialTheme.typography.labelMedium,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 24.dp, bottom = 10.dp),
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SuperficieInicio,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, BordaInicio),
+    ) {
+        Column {
+            OpcaoPerfil.entries.forEachIndexed { indice, opcao ->
+                AcaoPerfil(
+                    opcao = opcao,
+                    onClick = {
+                        when (opcao) {
+                            OpcaoPerfil.Pagamentos -> aoAbrirCarteira()
+                            OpcaoPerfil.Informacoes -> aoAbrirInformacoes()
+                            OpcaoPerfil.Senha -> aoAbrirRedefinicaoSenha()
+                            else -> opcaoAberta = opcao
+                        }
+                    },
+                )
+                if (indice < OpcaoPerfil.entries.lastIndex) {
+                    HorizontalDivider(color = BordaInicio.copy(alpha = 0.65f), modifier = Modifier.padding(horizontal = 16.dp))
+                }
+            }
+        }
+    }
+
+    OutlinedButton(
+        onClick = aoSair,
+        modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(52.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFFF8E9B).copy(alpha = 0.55f)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF8E9B)),
+    ) {
+        Text("Sair da conta", fontWeight = FontWeight.SemiBold)
+    }
+
+    opcaoAberta?.let { opcao ->
+        DialogoOpcaoPerfil(usuario, opcao, onDismiss = { opcaoAberta = null })
     }
 }
 
 @Composable
-private fun ConteudoPerfil(usuario: UsuarioAutenticado, aoSair: () -> Unit) {
-    TituloAreaDoador("Meu perfil", usuario.nome)
-    Text(usuario.email, color = TextoSecundarioInicio, modifier = Modifier.padding(top = 12.dp))
-    OutlinedButton(
-        onClick = aoSair,
-        modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(48.dp),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextoSecundarioInicio),
-    ) { Text("Sair da conta") }
+private fun AcaoPerfil(opcao: OpcaoPerfil, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(42.dp).background(RoxoInicio.copy(alpha = 0.2f), RoundedCornerShape(13.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(opcao.simbolo, color = RoxoClaroInicio, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(opcao.titulo, color = TextoInicio, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(
+                opcao.descricao,
+                color = TextoSecundarioInicio,
+                fontSize = 11.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Text("›", color = TextoSecundarioInicio, fontSize = 22.sp)
+    }
 }
+
+@Composable
+private fun DialogoOpcaoPerfil(usuario: UsuarioAutenticado, opcao: OpcaoPerfil, onDismiss: () -> Unit) {
+    val descricao = when (opcao) {
+        OpcaoPerfil.ConfigurarPerfil -> "Sua foto pode ser alterada diretamente no cartão do perfil. Nome e e-mail estão vinculados à conta autenticada."
+        OpcaoPerfil.Informacoes -> buildString {
+            append("Nome: ${usuario.nome}\n")
+            append("E-mail: ${usuario.email}")
+            usuario.localizacao?.let { append("\nLocalização: ${it.descricao}") }
+        }
+        else -> "Esta configuração estará disponível nesta área."
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SuperficieInicio,
+        shape = RoundedCornerShape(22.dp),
+        title = { Text(opcao.titulo, color = TextoInicio, fontWeight = FontWeight.Bold) },
+        text = { Text(descricao, color = TextoSecundarioInicio, lineHeight = 21.sp) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Entendi", color = RoxoClaroInicio) }
+        },
+    )
+}
+
+@Composable
+private fun TelaRedefinirSenhaPerfil(
+    email: String,
+    aoRedefinirSenha: suspend (String, String, String) -> Unit,
+    aoVoltar: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var senhaAtual by remember { mutableStateOf("") }
+    var novaSenha by remember { mutableStateOf("") }
+    var confirmacao by remember { mutableStateOf("") }
+    var senhaAtualVisivel by rememberSaveable { mutableStateOf(false) }
+    var novaSenhaVisivel by rememberSaveable { mutableStateOf(false) }
+    var confirmacaoVisivel by rememberSaveable { mutableStateOf(false) }
+    var salvando by remember { mutableStateOf(false) }
+    var retorno by remember { mutableStateOf<RetornoPerfil?>(null) }
+
+    CabecalhoTelaPerfil("Redefinir senha", aoVoltar)
+    Text(
+        "Confirme sua identidade e crie uma senha nova com pelo menos 8 caracteres.",
+        color = TextoSecundarioInicio,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
+    )
+    OutlinedTextField(
+        value = email,
+        onValueChange = {},
+        readOnly = true,
+        singleLine = true,
+        label = { Text("E-mail da conta") },
+        colors = coresCampoPerfil(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoSenhaPerfil("Senha atual", senhaAtual, { senhaAtual = it; retorno = null }, !salvando, senhaAtualVisivel) {
+        senhaAtualVisivel = !senhaAtualVisivel
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoSenhaPerfil("Nova senha", novaSenha, { novaSenha = it; retorno = null }, !salvando, novaSenhaVisivel) {
+        novaSenhaVisivel = !novaSenhaVisivel
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoSenhaPerfil("Confirmar nova senha", confirmacao, { confirmacao = it; retorno = null }, !salvando, confirmacaoVisivel) {
+        confirmacaoVisivel = !confirmacaoVisivel
+    }
+    retorno?.let { estado ->
+        MensagemPerfil(estado, Modifier.padding(top = 14.dp))
+    }
+    Button(
+        onClick = {
+            val erroLocal = when {
+                senhaAtual.isBlank() -> "Informe sua senha atual."
+                novaSenha.length < 8 -> "A nova senha deve ter pelo menos 8 caracteres."
+                novaSenha != confirmacao -> "A confirmação da nova senha não confere."
+                novaSenha == senhaAtual -> "A nova senha deve ser diferente da atual."
+                else -> null
+            }
+            if (erroLocal != null) {
+                retorno = RetornoPerfil(erroLocal, false)
+            } else {
+                salvando = true
+                retorno = null
+                scope.launch {
+                    try {
+                        aoRedefinirSenha(senhaAtual, novaSenha, confirmacao)
+                        senhaAtual = ""
+                        novaSenha = ""
+                        confirmacao = ""
+                        retorno = RetornoPerfil("Senha atualizada com segurança.", true)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: IOException) {
+                        retorno = RetornoPerfil(error.message ?: "Não foi possível atualizar a senha.", false)
+                    } finally {
+                        salvando = false
+                    }
+                }
+            }
+        },
+        enabled = !salvando,
+        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(54.dp),
+    ) {
+        if (salvando) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextoInicio, strokeWidth = 2.dp)
+        else Text("Atualizar senha", fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun TelaInformacoesPessoais(
+    usuario: UsuarioAutenticado,
+    fotoPerfil: ByteArray?,
+    aoCarregar: suspend () -> DadosPessoaisUsuario,
+    aoSalvar: suspend (DadosPessoaisUsuario) -> DadosPessoaisUsuario,
+    aoVoltar: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // Estes valores são recarregados da API a cada entrada nesta tela.
+    var nome by remember { mutableStateOf("") }
+    var sobrenome by remember { mutableStateOf("") }
+    var cpf by remember { mutableStateOf("") }
+    var dataNascimento by remember { mutableStateOf("") }
+    var endereco by remember { mutableStateOf("") }
+    var tipoSanguineo by remember { mutableStateOf<String?>(null) }
+    var genero by remember { mutableStateOf<String?>(null) }
+    var telefone by remember { mutableStateOf("") }
+    var carregando by remember { mutableStateOf(true) }
+    var salvando by remember { mutableStateOf(false) }
+    var retorno by remember { mutableStateOf<RetornoPerfil?>(null) }
+    var tentativa by remember { mutableStateOf(0) }
+
+    fun preencher(dados: DadosPessoaisUsuario) {
+        nome = dados.nome
+        sobrenome = dados.sobrenome.orEmpty()
+        cpf = dados.cpf.orEmpty()
+        dataNascimento = dataApiParaTela(dados.dataNascimento)
+        endereco = dados.endereco.orEmpty()
+        tipoSanguineo = dados.tipoSanguineo
+        genero = dados.genero
+        telefone = dados.telefone.orEmpty()
+    }
+
+    LaunchedEffect(tentativa) {
+        carregando = true
+        retorno = null
+        try {
+            preencher(aoCarregar())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: IOException) {
+            retorno = RetornoPerfil(error.message ?: "Não foi possível carregar seus dados.", false)
+        } finally {
+            carregando = false
+        }
+    }
+
+    CabecalhoTelaPerfil("Informações pessoais", aoVoltar)
+    CabecalhoUsuarioCompacto(usuario.nome, fotoPerfil, Modifier.padding(top = 14.dp, bottom = 18.dp))
+
+    if (carregando) {
+        Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = RoxoClaroInicio)
+        }
+        return
+    }
+    if (retorno?.sucesso == false && nome.isBlank()) {
+        MensagemPerfil(requireNotNull(retorno), Modifier.padding(top = 12.dp))
+        OutlinedButton(onClick = { tentativa++ }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            Text("Tentar novamente")
+        }
+        return
+    }
+
+    Text(
+        "Você pode deixar os campos opcionais em branco. O tipo sanguíneo é dado de saúde e também fica protegido no armazenamento.",
+        color = TextoSecundarioInicio,
+        fontSize = 12.sp,
+        lineHeight = 18.sp,
+        modifier = Modifier.fillMaxWidth().background(RoxoInicio.copy(alpha = 0.12f), RoundedCornerShape(14.dp)).padding(14.dp),
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    CampoTextoPerfil("Nome", nome, { nome = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Words, !salvando)
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoTextoPerfil("Sobrenome", sobrenome, { sobrenome = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Words, !salvando)
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoTextoPerfil("CPF", cpf, { cpf = it.take(14); retorno = null }, KeyboardType.Number, habilitado = !salvando)
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoTextoPerfil("Data de nascimento", dataNascimento, { dataNascimento = it.take(10); retorno = null }, KeyboardType.Number, habilitado = !salvando, placeholder = "DD/MM/AAAA")
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoTextoPerfil("Telefone com DDD", telefone, { telefone = it.take(20); retorno = null }, KeyboardType.Phone, habilitado = !salvando)
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoTextoPerfil("Endereço", endereco, { endereco = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Sentences, !salvando, singleLine = false)
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoSelecaoPerfil(
+        rotulo = "Tipo sanguíneo",
+        valor = tipoSanguineo,
+        opcoes = listOf(null to "Não informar", "A+" to "A+", "A-" to "A-", "B+" to "B+", "B-" to "B-", "AB+" to "AB+", "AB-" to "AB-", "O+" to "O+", "O-" to "O-"),
+        habilitado = !salvando,
+        aoSelecionar = { tipoSanguineo = it; retorno = null },
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    CampoSelecaoPerfil(
+        rotulo = "Gênero",
+        valor = genero,
+        opcoes = listOf(null to "Não informar", "MASCULINO" to "Masculino", "FEMININO" to "Feminino", "OUTROS" to "Outros", "PREFIRO_NAO_INFORMAR" to "Prefiro não informar"),
+        habilitado = !salvando,
+        aoSelecionar = { genero = it; retorno = null },
+    )
+    retorno?.let { MensagemPerfil(it, Modifier.padding(top = 14.dp)) }
+    Button(
+        onClick = {
+            val dataApi = dataTelaParaApi(dataNascimento)
+            val erroLocal = when {
+                nome.isBlank() -> "Informe seu nome."
+                dataNascimento.isNotBlank() && dataApi == null -> "Informe a data no formato DD/MM/AAAA."
+                else -> null
+            }
+            if (erroLocal != null) {
+                retorno = RetornoPerfil(erroLocal, false)
+            } else {
+                salvando = true
+                retorno = null
+                scope.launch {
+                    try {
+                        val atualizados = aoSalvar(DadosPessoaisUsuario(
+                            nome = nome.trim(),
+                            sobrenome = sobrenome.trim().ifBlank { null },
+                            cpf = cpf.trim().ifBlank { null },
+                            dataNascimento = dataApi,
+                            endereco = endereco.trim().ifBlank { null },
+                            tipoSanguineo = tipoSanguineo,
+                            genero = genero,
+                            telefone = telefone.trim().ifBlank { null },
+                        ))
+                        preencher(atualizados)
+                        retorno = RetornoPerfil("Informações atualizadas.", true)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: IOException) {
+                        retorno = RetornoPerfil(error.message ?: "Não foi possível salvar seus dados.", false)
+                    } finally {
+                        salvando = false
+                    }
+                }
+            }
+        },
+        enabled = !salvando,
+        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(54.dp),
+    ) {
+        if (salvando) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextoInicio, strokeWidth = 2.dp)
+        else Text("Salvar alterações", fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun CabecalhoTelaPerfil(titulo: String, aoVoltar: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = aoVoltar, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp)) {
+            Text("‹ Voltar", color = RoxoClaroInicio, fontWeight = FontWeight.SemiBold)
+        }
+        Text(titulo, color = TextoInicio, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+    }
+}
+
+@Composable
+private fun CabecalhoUsuarioCompacto(nome: String, fotoPerfil: ByteArray?, modifier: Modifier = Modifier) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, fotoPerfil) {
+        value = withContext(Dispatchers.Default) { fotoPerfil?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+    }
+    val iniciais = remember(nome) { nome.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("").ifBlank { "?" } }
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Surface(modifier = Modifier.size(52.dp), shape = CircleShape, color = RoxoInicio.copy(alpha = 0.25f)) {
+            if (bitmap != null) {
+                Image(requireNotNull(bitmap).asImageBitmap(), "Foto de perfil", Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(iniciais, color = TextoInicio, fontWeight = FontWeight.Bold) }
+            }
+        }
+        Column(modifier = Modifier.padding(start = 12.dp)) {
+            Text(nome, color = TextoInicio, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Cadastro pessoal", color = TextoSecundarioInicio, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun CampoTextoPerfil(
+    rotulo: String,
+    valor: String,
+    aoAlterar: (String) -> Unit,
+    tipoTeclado: KeyboardType,
+    capitalizacao: KeyboardCapitalization = KeyboardCapitalization.None,
+    habilitado: Boolean,
+    placeholder: String? = null,
+    singleLine: Boolean = true,
+) {
+    OutlinedTextField(
+        value = valor,
+        onValueChange = aoAlterar,
+        label = { Text(rotulo) },
+        placeholder = placeholder?.let { { Text(it) } },
+        enabled = habilitado,
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 2,
+        keyboardOptions = KeyboardOptions(keyboardType = tipoTeclado, capitalization = capitalizacao),
+        colors = coresCampoPerfil(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun CampoSelecaoPerfil(
+    rotulo: String,
+    valor: String?,
+    opcoes: List<Pair<String?, String>>,
+    habilitado: Boolean,
+    aoSelecionar: (String?) -> Unit,
+) {
+    var aberto by remember { mutableStateOf(false) }
+    val texto = opcoes.firstOrNull { it.first == valor }?.second ?: "Não informar"
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable(enabled = habilitado) { aberto = true },
+            color = Color.Transparent,
+            shape = RoundedCornerShape(4.dp),
+            border = BorderStroke(1.dp, if (aberto) RoxoClaroInicio else BordaInicio),
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Text(rotulo, color = if (aberto) RoxoClaroInicio else TextoSecundarioInicio, fontSize = 11.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(texto, color = TextoInicio, style = MaterialTheme.typography.bodyLarge)
+                    Text("⌄", color = TextoSecundarioInicio)
+                }
+            }
+        }
+        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }, modifier = Modifier.background(SuperficieInicio)) {
+            opcoes.forEach { (chave, descricao) ->
+                DropdownMenuItem(
+                    text = { Text(descricao, color = TextoInicio) },
+                    onClick = { aoSelecionar(chave); aberto = false },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MensagemPerfil(retorno: RetornoPerfil, modifier: Modifier = Modifier) {
+    Text(
+        retorno.mensagem,
+        color = if (retorno.sucesso) CorSucessoInicio else Color(0xFFFF8E9B),
+        fontSize = 12.sp,
+        lineHeight = 18.sp,
+        modifier = modifier.fillMaxWidth().background(
+            (if (retorno.sucesso) CorSucessoInicio else Color(0xFFFF8E9B)).copy(alpha = 0.1f),
+            RoundedCornerShape(12.dp),
+        ).padding(12.dp),
+    )
+}
+
+private fun dataApiParaTela(value: String?): String = value?.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
+    ?.split('-')?.let { "${it[2]}/${it[1]}/${it[0]}" }.orEmpty()
+
+private fun dataTelaParaApi(value: String): String? {
+    if (value.isBlank()) return null
+    val match = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").matchEntire(value.trim()) ?: return null
+    return "${match.groupValues[3]}-${match.groupValues[2]}-${match.groupValues[1]}"
+}
+
+@Composable
+private fun CampoSenhaPerfil(
+    rotulo: String,
+    valor: String,
+    aoAlterar: (String) -> Unit,
+    habilitado: Boolean,
+    visivel: Boolean,
+    aoAlternarVisibilidade: () -> Unit,
+) {
+    OutlinedTextField(
+        value = valor,
+        onValueChange = aoAlterar,
+        label = { Text(rotulo) },
+        enabled = habilitado,
+        singleLine = true,
+        visualTransformation = if (visivel) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        trailingIcon = {
+            TextButton(onClick = aoAlternarVisibilidade, enabled = habilitado) {
+                Text(if (visivel) "Ocultar" else "Mostrar", color = RoxoClaroInicio, fontSize = 11.sp)
+            }
+        },
+        colors = coresCampoPerfil(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun coresCampoPerfil() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = TextoInicio,
+    unfocusedTextColor = TextoInicio,
+    focusedBorderColor = RoxoClaroInicio,
+    unfocusedBorderColor = BordaInicio,
+    focusedLabelColor = RoxoClaroInicio,
+    unfocusedLabelColor = TextoSecundarioInicio,
+    cursorColor = RoxoClaroInicio,
+)
 
 @Composable
 private fun ConteudoVazio(simbolo: String, titulo: String, descricao: String) {
@@ -345,19 +1083,14 @@ private fun TituloAreaDoador(titulo: String, descricao: String) {
 }
 
 @Composable
-private fun PinoMapa(simbolo: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.size(38.dp).background(RoxoInicio, RoundedCornerShape(19.dp)),
-        contentAlignment = Alignment.Center,
-    ) { Text(simbolo, fontSize = 16.sp) }
-}
-
-@Composable
 private fun EstruturaInicioDoador(
     areaSelecionada: AreaDoador,
     aoSelecionarArea: (AreaDoador) -> Unit,
     aoSair: () -> Unit,
+    localizacaoUsuario: br.com.sosplus.data.LocalizacaoUsuario?,
     modifier: Modifier = Modifier,
+    exibirCabecalho: Boolean = true,
+    exibirNavegacao: Boolean = true,
     conteudo: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Box(
@@ -367,29 +1100,41 @@ private fun EstruturaInicioDoador(
     ) {
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 20.dp).padding(bottom = 104.dp),
+                .padding(horizontal = 22.dp, vertical = 20.dp)
+                .padding(bottom = if (exibirNavegacao) 104.dp else 20.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                LogoInicio()
-                Text("Nova Friburgo, RJ", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+            if (exibirCabecalho) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    LogoInicio()
+                    Text(
+                        text = localizacaoUsuario?.descricao ?: "Sua região",
+                        color = TextoSecundarioInicio,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 16.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.height(30.dp))
             }
-            Spacer(modifier = Modifier.height(30.dp))
             conteudo()
         }
-        NavegacaoDoador(
-            areaSelecionada,
-            aoSelecionarArea,
-            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+        if (exibirNavegacao) {
+            NavegacaoDoador(
+                areaSelecionada,
+                aoSelecionarArea,
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun NavegacaoDoador(
+fun NavegacaoDoador(
     areaSelecionada: AreaDoador,
     aoSelecionarArea: (AreaDoador) -> Unit,
     modifier: Modifier = Modifier,
@@ -403,14 +1148,33 @@ private fun NavegacaoDoador(
         Row(modifier = Modifier.padding(7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             AreaDoador.entries.forEach { area ->
                 val selecionada = area == areaSelecionada
+                val corElemento = if (selecionada) TextoInicio else TextoSecundarioInicio
                 TextButton(
                     onClick = { aoSelecionarArea(area) },
-                    modifier = Modifier.weight(1f).height(58.dp)
-                        .background(if (selecionada) RoxoInicio.copy(alpha = 0.34f) else Color.Transparent, RoundedCornerShape(20.dp)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .background(
+                            if (selecionada) RoxoInicio.copy(alpha = 0.34f) else Color.Transparent,
+                            RoundedCornerShape(20.dp),
+                        ),
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(area.icone, color = if (selecionada) TextoInicio else TextoSecundarioInicio, fontSize = 19.sp)
-                        Text(area.rotulo, color = if (selecionada) TextoInicio else TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        when (area) {
+                            AreaDoador.Inicio -> IconeInicioNav(cor = corElemento)
+                            AreaDoador.Mapa -> IconeMapaNav(cor = corElemento)
+                            AreaDoador.Carteira -> IconeCarteiraNav(cor = corElemento)
+                            AreaDoador.Perfil -> IconePerfilNav(cor = corElemento)
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = area.rotulo,
+                            color = corElemento,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
                 }
             }
@@ -420,6 +1184,7 @@ private fun NavegacaoDoador(
 
 @Composable
 fun RotaInicioOng(
+    token: String,
     usuario: UsuarioAutenticado,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
@@ -441,6 +1206,7 @@ fun RotaInicioOng(
     val tipoEdicao = nomeTipoEdicao?.let(TipoPublicacao::valueOf)
 
     TelaInicioOng(
+        token = token,
         usuario = usuario,
         publicacoes = publicacoes,
         tipoEdicao = tipoEdicao,
@@ -494,6 +1260,7 @@ fun RotaInicioOng(
 
 @Composable
 private fun TelaInicioOng(
+    token: String,
     usuario: UsuarioAutenticado,
     publicacoes: List<PublicacaoOng>,
     tipoEdicao: TipoPublicacao?,
@@ -606,6 +1373,7 @@ private fun TelaInicioOng(
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
+        EnderecoOng(token)
     }
 }
 
@@ -794,7 +1562,7 @@ private fun EstruturaInicio(
 }
 
 @Composable
-private fun LogoInicio(modifier: Modifier = Modifier) {
+fun LogoInicio(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
