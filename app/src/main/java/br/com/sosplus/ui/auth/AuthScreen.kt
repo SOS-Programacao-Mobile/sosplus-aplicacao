@@ -1,5 +1,9 @@
 package br.com.sosplus.ui.auth
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -45,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +80,7 @@ import br.com.sosplus.data.AuthApiException
 import br.com.sosplus.data.Sessao
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.CancellationException
@@ -115,16 +121,43 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
     var destino by remember { mutableStateOf(DestinoAutenticacao.Login) }
     var perfilSelecionado by rememberSaveable { mutableStateOf(PerfilUsuario.Doador) }
     var sessao by remember { mutableStateOf<Sessao?>(null) }
+    var fotoPerfil by remember { mutableStateOf<ByteArray?>(null) }
     val repository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
     val sair: () -> Unit = {
         val token = sessao?.token
         sessao = null
+        fotoPerfil = null
         destino = DestinoAutenticacao.Login
         if (token != null) scope.launch {
             try { repository.sair(token) }
             catch (error: CancellationException) { throw error }
             catch (_: IOException) { /* A sessão local já foi encerrada; a remota expira em 24 horas. */ }
+        }
+    }
+
+    AtualizarLocalizacaoDaSessao(
+        sessao = sessao,
+        repository = repository,
+        aoAtualizarUsuario = { token, usuarioAtualizado ->
+            sessao?.takeIf { it.token == token }?.let { sessaoAtual ->
+                sessao = sessaoAtual.copy(usuario = usuarioAtualizado)
+            }
+        },
+    )
+
+    LaunchedEffect(sessao?.token) {
+        val sessaoAtual = sessao
+        fotoPerfil = if (sessaoAtual == null) {
+            null
+        } else {
+            try {
+                repository.carregarFotoPerfil(sessaoAtual.token)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: IOException) {
+                null
+            }
         }
     }
 
@@ -158,16 +191,83 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
 
             DestinoAutenticacao.InicioDoador -> RotaInicioDoador(
                 usuario = requireNotNull(sessao).usuario,
+                fotoPerfil = fotoPerfil,
+                aoSalvarFotoPerfil = { conteudo, mimeType ->
+                    val token = requireNotNull(sessao).token
+                    repository.atualizarFotoPerfil(token, conteudo, mimeType)
+                    if (sessao?.token == token) fotoPerfil = conteudo
+                },
+                aoRedefinirSenha = { senhaAtual, novaSenha, confirmacao ->
+                    repository.atualizarSenha(
+                        requireNotNull(sessao).token,
+                        senhaAtual,
+                        novaSenha,
+                        confirmacao,
+                    )
+                },
+                aoCarregarDadosPessoais = {
+                    repository.carregarDadosPessoais(requireNotNull(sessao).token)
+                },
+                aoSalvarDadosPessoais = { dados ->
+                    val token = requireNotNull(sessao).token
+                    val atualizacao = repository.atualizarDadosPessoais(token, dados)
+                    sessao?.takeIf { it.token == token }?.let { atual ->
+                        sessao = atual.copy(usuario = atualizacao.usuario)
+                    }
+                    atualizacao.dados
+                },
                 modifier = Modifier.padding(scaffoldPadding),
                 aoSair = sair,
             )
 
             DestinoAutenticacao.InicioOng -> RotaInicioOng(
+                token = requireNotNull(sessao).token,
                 usuario = requireNotNull(sessao).usuario,
                 modifier = Modifier.padding(scaffoldPadding),
                 aoSair = sair,
             )
         }
+    }
+}
+
+@Composable
+private fun AtualizarLocalizacaoDaSessao(
+    sessao: Sessao?,
+    repository: AuthRepository,
+    aoAtualizarUsuario: (token: String, usuario: br.com.sosplus.data.UsuarioAutenticado) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    fun atualizar(sessaoAtual: Sessao) {
+        scope.launch {
+            try {
+                val localizacao = obterLocalizacaoAtualDaRede(context) ?: return@launch
+                val usuarioAtualizado = repository.atualizarLocalizacao(sessaoAtual.token, localizacao)
+                aoAtualizarUsuario(sessaoAtual.token, usuarioAtualizado)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: IOException) {
+                // A autenticação continua funcionando mesmo se a localização ou a API
+                // estiverem indisponíveis; a localização já salva permanece como padrão.
+            }
+        }
+    }
+
+    val solicitarPermissao = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { permitido ->
+        if (permitido) sessao?.let(::atualizar)
+    }
+
+    LaunchedEffect(sessao?.token) {
+        val sessaoAtual = sessao ?: return@LaunchedEffect
+        val permitido = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (permitido) atualizar(sessaoAtual)
+        else solicitarPermissao.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
     }
 }
 
