@@ -44,6 +44,17 @@ data class AtualizacaoDadosPessoais(
     val usuario: UsuarioAutenticado,
 )
 
+data class DoacaoUsuario(
+    val id: String,
+    val ongNome: String,
+    val campanhaTitulo: String,
+    val valorCentavos: Long,
+    /** Data no formato AAAA-MM-DD, como vem da API. */
+    val data: String,
+    val status: String,
+    val anonima: Boolean,
+)
+
 class AuthApiException(message: String) : IOException(message)
 
 class AuthRepository {
@@ -176,6 +187,23 @@ class AuthRepository {
         request("logout", "POST", token = token)
     }
 
+    // A API só aceita o id do próprio usuário autenticado.
+    suspend fun carregarDoacoes(token: String, usuarioId: String): List<DoacaoUsuario> {
+        val array = requestApi("usuarios/$usuarioId/doacoes", "GET", token = token).getJSONArray("doacoes")
+        return List(array.length()) { i ->
+            val json = array.getJSONObject(i)
+            DoacaoUsuario(
+                id = json.getString("id"),
+                ongNome = json.getJSONObject("ong").getString("nome"),
+                campanhaTitulo = json.getJSONObject("campanha").getString("titulo"),
+                valorCentavos = json.getLong("valorCentavos"),
+                data = json.getString("data"),
+                status = json.getString("status"),
+                anonima = json.optBoolean("anonima", false),
+            )
+        }
+    }
+
     private fun usuarioDeJson(json: JSONObject): UsuarioAutenticado {
         val localizacaoJson = json.optJSONObject("localizacao")
         val localizacao = localizacaoJson?.let {
@@ -211,8 +239,11 @@ class AuthRepository {
     )
 
     private suspend fun request(path: String, method: String, body: JSONObject? = null, token: String? = null): JSONObject =
+        requestApi("auth/$path", method, body, token)
+
+    private suspend fun requestApi(path: String, method: String, body: JSONObject? = null, token: String? = null): JSONObject =
         withContext(Dispatchers.IO) {
-            val url = "${BuildConfig.API_BASE_URL.trimEnd('/')}/api/v1/auth/$path"
+            val url = "${BuildConfig.API_BASE_URL.trimEnd('/')}/api/v1/$path"
             val call = NetworkLogger.request(method, url, body)
             val connection = URL(url)
                 .openConnection() as HttpURLConnection

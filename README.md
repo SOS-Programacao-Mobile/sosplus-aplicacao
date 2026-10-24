@@ -44,6 +44,8 @@ O cadastro grava a conta na API. Após a mensagem de sucesso, volte ao login, se
 
 Os acessos de demonstração foram removidos. A sessão fica apenas em memória no app e é revogada ao sair; ao reabrir o app é preciso fazer login novamente. “Lembrar e-mail” salva somente o endereço de e-mail, nunca senha ou token. Após cada login, o app solicita localização aproximada (rede/Wi-Fi/antenas, sem satélite) e salva cidade, estado e coordenadas na API. A última localização salva é usada como padrão no mapa; se a permissão for negada, o app mantém o último local salvo. A tela de perfil permite salvar uma foto otimizada no servidor e redefinir a senha com confirmação da senha atual. Recuperação de senha para usuários desconectados ainda não está implementada. Campanhas, mapa e publicações ainda são telas locais de demonstração, fora desta integração de autenticação.
 
+Em **Perfil → Minhas doações**, o doador vê o histórico das doações da própria conta (ONG, campanha, valor, data, status e se foi anônima), lido de `GET /api/v1/usuarios/{id}/doacoes`. Os filtros Todas, 30 dias, 3 meses e Este ano mudam o período exibido, e o resumo mostra o total das doações confirmadas.
+
 ## Testes
 
 ```bash
