@@ -27,7 +27,7 @@ class AuthFlowTest {
 
     private fun aguardar(text: String) {
         compose.waitUntil(timeoutMillis = 20_000) {
-            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+            runCatching { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false)
         }
         compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
     }
@@ -40,6 +40,7 @@ class AuthFlowTest {
         val suffix = System.currentTimeMillis().toString()
         val nome = if (ong) "ONG Teste $suffix" else "Doador Teste $suffix"
         val email = "android-${if (ong) "ong" else "doador"}-$suffix@example.test"
+        aguardar("Bem-vindo de volta")
         compose.onNodeWithText("Criar conta de doador").performScrollTo().performClick()
         if (ong) compose.onNodeWithText("ONG").performClick()
         val cadastrar = if (ong) "Cadastrar ONG" else "Criar minha conta"

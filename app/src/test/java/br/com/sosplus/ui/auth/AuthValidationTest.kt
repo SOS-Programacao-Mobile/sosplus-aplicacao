@@ -8,7 +8,14 @@ class TesteValidacaoAutenticacao {
     @Test
     fun aceitaCadastroCompletoDosDoisPerfis() {
         assertTrue(validarCadastro(PerfilUsuario.Doador, "Ana", "ana@example.com", "senha123", "senha123").sucesso)
+        assertTrue(validarCadastro(PerfilUsuario.Doador, "Ana", "ana@example.com", "senha123", "senha123", cpf = "529.982.247-25").sucesso)
         assertTrue(validarCadastro(PerfilUsuario.Ong, "ONG", "ong@example.com", "senha123", "senha123", "11.222.333/0001-81").sucesso)
+    }
+
+    @Test
+    fun cpfDoDoadorEopcionalMasQuandoInformadoDeveSerValido() {
+        assertTrue(validarCadastro(PerfilUsuario.Doador, "Ana", "ana@example.com", "senha123", "senha123", cpf = "").sucesso)
+        assertFalse(validarCadastro(PerfilUsuario.Doador, "Ana", "ana@example.com", "senha123", "senha123", cpf = "111.111.111-11").sucesso)
     }
 
     @Test

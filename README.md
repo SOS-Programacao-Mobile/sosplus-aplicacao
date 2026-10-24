@@ -16,7 +16,7 @@ Em celular conectado por USB, habilite a depuração e use:
 
 ```bash
 adb reverse tcp:3000 tcp:3000
-./gradlew installDebug -PapiBaseUrl=http://127.0.0.1:3000
+./gradlew installDebug -PapiBaseUrl=http://localhost:3000
 ```
 
 Repita o `adb reverse` ao reconectar o celular. Para outro servidor, informe `-PapiBaseUrl=https://seu-servidor`. HTTP sem TLS é permitido somente na variante debug. A versão release precisa do endereço HTTPS real da API; o endereço `.example` é apenas um marcador, não um serviço publicado.
@@ -33,7 +33,7 @@ nos logs HTTP e SQL do backend. As linhas seguem o formato
 `data nível mensagem chave=valor`, por exemplo:
 
 ```text
-2026-09-22T12:30:15Z INFO Requisição HTTP concluída request_id=abc metodo=POST url=http://127.0.0.1:3000/api/v1/auth/login status=200 duracao_ms=91
+2026-09-22T12:30:15Z INFO Requisição HTTP concluída request_id=abc metodo=POST url=http://localhost:3000/api/v1/auth/login status=200 duracao_ms=91
 ```
 
 ## Cadastro e acesso
@@ -56,7 +56,7 @@ Em **Perfil → Minhas doações**, o doador vê o histórico das doações da p
 
 ```bash
 adb reverse tcp:3000 tcp:13001
-./gradlew connectedDebugAndroidTest -PapiBaseUrl=http://127.0.0.1:3000 \
+./gradlew connectedDebugAndroidTest -PapiBaseUrl=http://localhost:3000 \
   -Pandroid.testInstrumentationRunnerArguments.authE2E=true \
   -Pandroid.testInstrumentationRunnerArguments.class=br.com.sosplus.AuthFlowTest
 ```

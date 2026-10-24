@@ -2,26 +2,23 @@ package br.com.sosplus.ui.auth
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,17 +30,26 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.CorporateFare
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VolunteerActivism
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,10 +59,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -64,41 +72,47 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import br.com.sosplus.ui.theme.SosTheme
-import br.com.sosplus.data.AuthRepository
-import br.com.sosplus.data.AuthApiException
-import br.com.sosplus.data.Sessao
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import br.com.sosplus.data.AuthApiException
+import br.com.sosplus.data.AuthRepository
+import br.com.sosplus.data.Sessao
+import br.com.sosplus.data.SessionEvents
+import br.com.sosplus.ui.components.BannerAlerta
+import br.com.sosplus.ui.components.Formatadores
+import br.com.sosplus.ui.components.SosBotaoPrimario
+import br.com.sosplus.ui.components.SosBotaoSecundario
+import br.com.sosplus.ui.components.SosBotaoTexto
+import br.com.sosplus.ui.components.SosCampoSenha
+import br.com.sosplus.ui.components.SosCampoTexto
+import br.com.sosplus.ui.components.SosLogo
+import br.com.sosplus.ui.components.TipoAlerta
+import br.com.sosplus.ui.theme.BordaFocada
+import br.com.sosplus.ui.theme.BordaPadrao
+import br.com.sosplus.ui.theme.CoralAcento
+import br.com.sosplus.ui.theme.FundoApp
+import br.com.sosplus.ui.theme.FundoCampo
+import br.com.sosplus.ui.theme.FundoSuperficie
+import br.com.sosplus.ui.theme.FundoSuperficieElevada
+import br.com.sosplus.ui.theme.RoxoClaro
+import br.com.sosplus.ui.theme.RoxoContainer
+import br.com.sosplus.ui.theme.RoxoPrincipal
+import br.com.sosplus.ui.theme.TextoDesabilitado
+import br.com.sosplus.ui.theme.TextoPrincipal
+import br.com.sosplus.ui.theme.TextoSecundario
+import br.com.sosplus.ui.theme.TextoTerciario
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.IOException
 
-private val FundoAplicativo = Color(0xFF111020)
-private val FundoPainel = Color(0xFF090E1B)
-private val FundoCampo = Color(0xFF11182A)
-private val BordaCampo = Color(0xFF303950)
-private val RoxoPrincipal = Color(0xFF803DF1)
-private val RoxoClaro = Color(0xFF9C64FF)
-private val TextoPrincipal = Color(0xFFF8F7FF)
-private val TextoSecundario = Color(0xFFAAA8BD)
-private val CorErro = Color(0xFFFF8E9B)
-private val CorSucesso = Color(0xFF62DFA4)
-
-private enum class DestinoAutenticacao {
+enum class DestinoAutenticacao {
     Login,
     Cadastro,
     InicioDoador,
@@ -118,13 +132,31 @@ data class RetornoAutenticacao(
 @Composable
 fun AplicativoSos(modifier: Modifier = Modifier) {
     // A sessão fica apenas em memória; nenhuma senha ou token é gravado no dispositivo.
-    var destino by remember { mutableStateOf(DestinoAutenticacao.Login) }
+    var destino by rememberSaveable { mutableStateOf(DestinoAutenticacao.Login) }
     var perfilSelecionado by rememberSaveable { mutableStateOf(PerfilUsuario.Doador) }
+    var emailPreenchido by rememberSaveable { mutableStateOf("") }
     var sessao by remember { mutableStateOf<Sessao?>(null) }
     var fotoPerfil by remember { mutableStateOf<ByteArray?>(null) }
+    var avisoLogin by rememberSaveable { mutableStateOf<String?>(null) }
+    var tipoAvisoLogin by rememberSaveable { mutableStateOf(TipoAlerta.Info) }
+
     val repository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(sessao?.token) {
+        SessionEvents.expiradas.collect { token ->
+            if (sessao?.token == token) {
+                avisoLogin = "Sua sessão expirou. Entre novamente."
+                tipoAvisoLogin = TipoAlerta.Aviso
+                sessao = null
+                fotoPerfil = null
+                destino = DestinoAutenticacao.Login
+            }
+        }
+    }
+
     val sair: () -> Unit = {
+        avisoLogin = null
         val token = sessao?.token
         sessao = null
         fotoPerfil = null
@@ -163,16 +195,20 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = FundoAplicativo,
+        containerColor = FundoApp,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { scaffoldPadding ->
         when (destino) {
             DestinoAutenticacao.Login -> RotaLogin(
+                aviso = avisoLogin,
+                tipoAviso = tipoAvisoLogin,
+                emailInicial = emailPreenchido,
                 modifier = Modifier.padding(scaffoldPadding),
                 perfilSelecionado = perfilSelecionado,
                 aoAlterarPerfil = { perfilSelecionado = it },
                 aoCriarConta = { destino = DestinoAutenticacao.Cadastro },
                 aoConcluirLogin = { autenticacao ->
+                    avisoLogin = null
                     sessao = autenticacao
                     destino = if (autenticacao.usuario.tipo == "DOADOR") {
                         DestinoAutenticacao.InicioDoador
@@ -187,9 +223,17 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
                 perfilSelecionado = perfilSelecionado,
                 aoAlterarPerfil = { perfilSelecionado = it },
                 aoVoltarLogin = { destino = DestinoAutenticacao.Login },
+                aoConcluirCadastro = { emailCadastrado, perfilCadastrado ->
+                    emailPreenchido = emailCadastrado
+                    perfilSelecionado = perfilCadastrado
+                    avisoLogin = "Conta criada com sucesso! Faça login para continuar."
+                    tipoAvisoLogin = TipoAlerta.Sucesso
+                    destino = DestinoAutenticacao.Login
+                },
             )
 
             DestinoAutenticacao.InicioDoador -> RotaInicioDoador(
+                token = requireNotNull(sessao).token,
                 usuario = requireNotNull(sessao).usuario,
                 fotoPerfil = fotoPerfil,
                 aoSalvarFotoPerfil = { conteudo, mimeType ->
@@ -277,6 +321,9 @@ private fun AtualizarLocalizacaoDaSessao(
 
 @Composable
 private fun RotaLogin(
+    aviso: String? = null,
+    tipoAviso: TipoAlerta = TipoAlerta.Info,
+    emailInicial: String = "",
     perfilSelecionado: PerfilUsuario,
     aoAlterarPerfil: (PerfilUsuario) -> Unit,
     aoCriarConta: () -> Unit,
@@ -285,14 +332,25 @@ private fun RotaLogin(
 ) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("login_email", android.content.Context.MODE_PRIVATE) }
-    var usuario by rememberSaveable { mutableStateOf(preferences.getString("email", "").orEmpty()) }
+    var usuario by rememberSaveable {
+        mutableStateOf(emailInicial.ifBlank { preferences.getString("email", "").orEmpty() })
+    }
     var senha by remember { mutableStateOf("") }
     var senhaVisivel by rememberSaveable { mutableStateOf(false) }
     var lembrarUsuario by rememberSaveable { mutableStateOf(preferences.contains("email")) }
-    var retorno by remember { mutableStateOf<RetornoAutenticacao?>(null) }
+    var recuperandoSenha by remember { mutableStateOf(false) }
+    var retorno by remember(aviso) { mutableStateOf(aviso?.let { RetornoAutenticacao(it, sucesso = tipoAviso == TipoAlerta.Sucesso) }) }
     var carregando by remember { mutableStateOf(false) }
+    var exibirDialogoTermos by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val repository = remember { AuthRepository() }
+
+    LaunchedEffect(emailInicial) {
+        if (emailInicial.isNotBlank()) {
+            usuario = emailInicial
+        }
+    }
 
     TelaLogin(
         perfilSelecionado = perfilSelecionado,
@@ -305,8 +363,6 @@ private fun RotaLogin(
         aoAlterarPerfil = {
             if (!carregando) {
                 aoAlterarPerfil(it)
-                usuario = ""
-                senha = ""
                 retorno = null
             }
         },
@@ -320,9 +376,8 @@ private fun RotaLogin(
         },
         aoAlternarVisibilidadeSenha = { senhaVisivel = !senhaVisivel },
         aoAlterarLembrarUsuario = { lembrarUsuario = it },
-        aoRecuperarSenha = {
-            retorno = RetornoAutenticacao("A recuperação de senha ainda não está disponível.")
-        },
+        aoRecuperarSenha = { recuperandoSenha = true },
+        aoExibirTermos = { exibirDialogoTermos = true },
         aoEntrar = {
             if (!carregando) {
                 if (usuario.isBlank() || senha.isBlank()) {
@@ -330,7 +385,7 @@ private fun RotaLogin(
                 } else {
                     carregando = true
                     retorno = null
-                    val emailEnviado = usuario
+                    val emailEnviado = usuario.trim()
                     val senhaEnviada = senha
                     val tipo = if (perfilSelecionado == PerfilUsuario.Doador) "DOADOR" else "ONG"
                     scope.launch {
@@ -351,6 +406,22 @@ private fun RotaLogin(
         aoCriarConta = { if (!carregando) aoCriarConta() },
         modifier = modifier,
     )
+
+    if (recuperandoSenha) {
+        RecuperarSenhaDialog(
+            emailInicial = usuario,
+            aoFechar = { recuperandoSenha = false },
+            aoConcluir = {
+                recuperandoSenha = false
+                senha = ""
+                retorno = RetornoAutenticacao("Senha atualizada! Entre com sua nova senha.", sucesso = true)
+            },
+        )
+    }
+
+    if (exibirDialogoTermos) {
+        DialogoTermosEPrivacidade(aoFechar = { exibirDialogoTermos = false })
+    }
 }
 
 @Composable
@@ -358,16 +429,22 @@ private fun RotaCadastro(
     perfilSelecionado: PerfilUsuario,
     aoAlterarPerfil: (PerfilUsuario) -> Unit,
     aoVoltarLogin: () -> Unit,
+    aoConcluirCadastro: (email: String, perfil: PerfilUsuario) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BackHandler { aoVoltarLogin() }
+
     var nome by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var cnpj by rememberSaveable { mutableStateOf("") }
+    var cpf by rememberSaveable { mutableStateOf("") }
     var senha by remember { mutableStateOf("") }
     var confirmacao by remember { mutableStateOf("") }
     var senhaVisivel by rememberSaveable { mutableStateOf(false) }
     var retorno by remember { mutableStateOf<RetornoAutenticacao?>(null) }
     var carregando by remember { mutableStateOf(false) }
+    var exibirDialogoTermos by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val repository = remember { AuthRepository() }
 
@@ -376,6 +453,7 @@ private fun RotaCadastro(
         nome = nome,
         email = email,
         cnpj = cnpj,
+        cpf = cpf,
         senha = senha,
         confirmacao = confirmacao,
         senhaVisivel = senhaVisivel,
@@ -389,40 +467,29 @@ private fun RotaCadastro(
                 senha = ""
                 confirmacao = ""
                 cnpj = ""
+                cpf = ""
                 retorno = null
             }
         },
-        aoAlterarCnpj = { cnpj = it; retorno = null },
-        aoAlterarNome = {
-            nome = it
-            retorno = null
-        },
-        aoAlterarEmail = {
-            email = it
-            retorno = null
-        },
-        aoAlterarSenha = {
-            senha = it
-            retorno = null
-        },
-        aoAlterarConfirmacao = {
-            confirmacao = it
-            retorno = null
-        },
+        aoAlterarCnpj = { cnpj = Formatadores.mascaraCnpj(it); retorno = null },
+        aoAlterarCpf = { cpf = Formatadores.mascaraCpf(it); retorno = null },
+        aoAlterarNome = { nome = it; retorno = null },
+        aoAlterarEmail = { email = it; retorno = null },
+        aoAlterarSenha = { senha = it; retorno = null },
+        aoAlterarConfirmacao = { confirmacao = it; retorno = null },
         aoAlternarVisibilidadeSenha = { senhaVisivel = !senhaVisivel },
+        aoExibirTermos = { exibirDialogoTermos = true },
         aoCriarConta = {
             if (!carregando) {
-                val validacao = validarCadastro(perfilSelecionado, nome, email, senha, confirmacao, cnpj)
+                val validacao = validarCadastro(perfilSelecionado, nome, email, senha, confirmacao, cnpj, cpf)
                 retorno = if (validacao.sucesso) null else validacao
                 if (validacao.sucesso) {
                     carregando = true
                     val tipo = if (perfilSelecionado == PerfilUsuario.Doador) "DOADOR" else "ONG"
                     scope.launch {
                         try {
-                            repository.cadastrar(nome, email, senha, confirmacao, tipo, cnpj)
-                            senha = ""
-                            confirmacao = ""
-                            retorno = RetornoAutenticacao("Conta salva! Entre com seu e-mail e senha.", sucesso = true)
+                            repository.cadastrar(nome, email, senha, confirmacao, tipo, cnpj, cpf)
+                            aoConcluirCadastro(email, perfilSelecionado)
                         } catch (error: CancellationException) { throw error }
                         catch (error: IOException) { retorno = erroDaApi(error) }
                         finally { carregando = false }
@@ -433,6 +500,10 @@ private fun RotaCadastro(
         aoVoltarLogin = { if (!carregando) aoVoltarLogin() },
         modifier = modifier,
     )
+
+    if (exibirDialogoTermos) {
+        DialogoTermosEPrivacidade(aoFechar = { exibirDialogoTermos = false })
+    }
 }
 
 @Composable
@@ -449,6 +520,7 @@ private fun TelaLogin(
     aoAlternarVisibilidadeSenha: () -> Unit,
     aoAlterarLembrarUsuario: (Boolean) -> Unit,
     aoRecuperarSenha: () -> Unit,
+    aoExibirTermos: () -> Unit,
     aoEntrar: () -> Unit,
     aoCriarConta: () -> Unit,
     carregando: Boolean = false,
@@ -461,18 +533,18 @@ private fun TelaLogin(
         Text(
             text = "Bem-vindo de volta",
             color = TextoPrincipal,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
         )
         if (!tecladoVisivel) {
             Text(
                 text = "Escolha seu perfil para continuar no SOS+.",
                 color = TextoSecundario,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 5.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             SeletorPerfil(
                 perfilSelecionado = perfilSelecionado,
@@ -480,103 +552,103 @@ private fun TelaLogin(
             )
         }
 
-        Spacer(modifier = Modifier.height(if (tecladoVisivel) 7.dp else 12.dp))
+        Spacer(modifier = Modifier.height(if (tecladoVisivel) 8.dp else 16.dp))
 
-        CampoTextoSos(
+        SosCampoTexto(
             valor = usuario,
             aoAlterarValor = aoAlterarUsuario,
             rotulo = "E-mail",
-            textoOrientativo = "Digite seu e-mail cadastrado",
-            keyboardType = KeyboardType.Email,
-            simboloPrincipal = if (perfilSelecionado == PerfilUsuario.Doador) "@" else "O",
+            placeholder = "Digite seu e-mail cadastrado",
+            iconeInicio = Icons.Default.Email,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            enabled = !carregando,
         )
-        Spacer(modifier = Modifier.height(9.dp))
-        CampoSenhaSos(
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SosCampoSenha(
             valor = senha,
             aoAlterarValor = aoAlterarSenha,
             rotulo = "Senha",
-            textoOrientativo = "Digite sua senha",
+            placeholder = "Digite sua senha",
             senhaVisivel = senhaVisivel,
-            aoAlternarVisibilidadeSenha = aoAlternarVisibilidadeSenha,
+            aoAlternarVisibilidade = aoAlternarVisibilidadeSenha,
+            enabled = !carregando,
         )
 
-        if (!tecladoVisivel) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 42.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = lembrarUsuario,
-                        onCheckedChange = aoAlterarLembrarUsuario,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = RoxoPrincipal,
-                            uncheckedColor = TextoSecundario,
-                            checkmarkColor = Color.White,
-                        ),
-                    )
-                    Text(
-                        text = "Lembrar e-mail",
-                        color = TextoSecundario,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                TextButton(onClick = aoRecuperarSenha) {
-                    Text(
-                        text = "Esqueci minha senha",
-                        color = RoxoClaro,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-        }
-
-        MensagemRetorno(retorno = retorno)
-
-        Button(
-            onClick = aoEntrar,
-            enabled = !carregando,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RoxoPrincipal),
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = if (carregando) "Entrando..." else if (perfilSelecionado == PerfilUsuario.Doador) {
-                    "Entrar como doador"
-                } else {
-                    "Entrar como ONG"
-                },
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-
-        if (!tecladoVisivel) {
-            OutlinedButton(
-                onClick = aoCriarConta,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RoxoClaro),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = RoxoClaro),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { aoAlterarLembrarUsuario(!lembrarUsuario) }
+            ) {
+                Checkbox(
+                    checked = lembrarUsuario,
+                    onCheckedChange = aoAlterarLembrarUsuario,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = RoxoPrincipal,
+                        uncheckedColor = TextoSecundario,
+                        checkmarkColor = Color.White,
+                    ),
+                )
+                Text(
+                    text = "Lembrar e-mail",
+                    color = TextoSecundario,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(
+                onClick = aoRecuperarSenha,
+                modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Text(
-                    text = if (perfilSelecionado == PerfilUsuario.Doador) {
-                        "Criar conta de doador"
-                    } else {
-                        "Criar conta de ONG"
-                    },
+                    text = "Esqueci minha senha",
+                    color = RoxoClaro,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
 
-            TextoTermos(modifier = Modifier.padding(top = 4.dp))
+        if (retorno != null) {
+            BannerAlerta(
+                mensagem = retorno.mensagem,
+                tipo = if (retorno.sucesso) TipoAlerta.Sucesso else TipoAlerta.Erro,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+
+        SosBotaoPrimario(
+            texto = if (carregando) "Entrando..." else if (perfilSelecionado == PerfilUsuario.Doador) {
+                "Entrar como doador"
+            } else {
+                "Entrar como ONG"
+            },
+            onClick = aoEntrar,
+            carregando = carregando,
+        )
+
+        if (!tecladoVisivel) {
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SosBotaoSecundario(
+                texto = if (perfilSelecionado == PerfilUsuario.Doador) {
+                    "Criar conta de doador"
+                } else {
+                    "Criar conta de ONG"
+                },
+                onClick = aoCriarConta,
+                enabled = !carregando,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            TextoTermos(aoClicarTermos = aoExibirTermos)
         }
     }
 }
@@ -587,6 +659,7 @@ private fun TelaCadastro(
     nome: String,
     email: String,
     cnpj: String,
+    cpf: String,
     senha: String,
     confirmacao: String,
     senhaVisivel: Boolean,
@@ -595,9 +668,11 @@ private fun TelaCadastro(
     aoAlterarNome: (String) -> Unit,
     aoAlterarEmail: (String) -> Unit,
     aoAlterarCnpj: (String) -> Unit,
+    aoAlterarCpf: (String) -> Unit,
     aoAlterarSenha: (String) -> Unit,
     aoAlterarConfirmacao: (String) -> Unit,
     aoAlternarVisibilidadeSenha: () -> Unit,
+    aoExibirTermos: () -> Unit,
     aoCriarConta: () -> Unit,
     aoVoltarLogin: () -> Unit,
     carregando: Boolean = false,
@@ -607,29 +682,39 @@ private fun TelaCadastro(
         cabecalhoCompacto = true,
         modifier = modifier,
     ) { tecladoVisivel ->
-        Text(
-            text = if (perfilSelecionado == PerfilUsuario.Doador) {
-                "Crie sua conta"
-            } else {
-                "Cadastre sua ONG"
-            },
-            color = TextoPrincipal,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = if (perfilSelecionado == PerfilUsuario.Doador) "Crie sua conta" else "Cadastre sua ONG",
+                color = TextoPrincipal,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            IconButton(onClick = aoVoltarLogin) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Voltar para o login",
+                    tint = TextoSecundario,
+                )
+            }
+        }
+
         if (!tecladoVisivel) {
             Text(
                 text = if (perfilSelecionado == PerfilUsuario.Doador) {
-                    "Encontre ONGs e campanhas perto de você."
+                    "Encontre organizações e apoie causas na sua região."
                 } else {
-                    "Divulgue campanhas e necessidades para sua comunidade."
+                    "Divulgue campanhas e receba doações para sua comunidade."
                 },
                 color = TextoSecundario,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 5.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 2.dp),
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             SeletorPerfil(
                 perfilSelecionado = perfilSelecionado,
@@ -637,93 +722,112 @@ private fun TelaCadastro(
             )
         }
 
-        Spacer(modifier = Modifier.height(if (tecladoVisivel) 7.dp else 12.dp))
+        Spacer(modifier = Modifier.height(if (tecladoVisivel) 8.dp else 14.dp))
 
-        CampoTextoSos(
+        SosCampoTexto(
             valor = nome,
             aoAlterarValor = aoAlterarNome,
-            rotulo = if (perfilSelecionado == PerfilUsuario.Doador) "Nome completo" else "Nome da ONG",
-            textoOrientativo = if (perfilSelecionado == PerfilUsuario.Doador) {
-                "Como podemos chamar você?"
-            } else {
-                "Digite o nome da organização"
-            },
-            simboloPrincipal = if (perfilSelecionado == PerfilUsuario.Doador) "N" else "O",
+            rotulo = if (perfilSelecionado == PerfilUsuario.Doador) "Nome completo" else "Nome da organização",
+            placeholder = if (perfilSelecionado == PerfilUsuario.Doador) "Como podemos chamar você?" else "Nome oficial da ONG",
+            iconeInicio = Icons.Default.Person,
+            enabled = !carregando,
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        CampoTextoSos(
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SosCampoTexto(
             valor = email,
             aoAlterarValor = aoAlterarEmail,
             rotulo = if (perfilSelecionado == PerfilUsuario.Doador) "E-mail" else "E-mail institucional",
-            textoOrientativo = if (perfilSelecionado == PerfilUsuario.Doador) {
-                "voce@exemplo.com"
-            } else {
-                "contato@ong.org.br"
-            },
-            simboloPrincipal = "@",
-            keyboardType = KeyboardType.Email,
+            placeholder = if (perfilSelecionado == PerfilUsuario.Doador) "voce@exemplo.com" else "contato@ong.org.br",
+            iconeInicio = Icons.Default.Email,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            enabled = !carregando,
         )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         if (perfilSelecionado == PerfilUsuario.Ong) {
-            Spacer(modifier = Modifier.height(8.dp))
-            CampoTextoSos(
+            SosCampoTexto(
                 valor = cnpj,
                 aoAlterarValor = aoAlterarCnpj,
-                rotulo = "CNPJ obrigatório",
-                textoOrientativo = "CNPJ da organização",
-                simboloPrincipal = "#",
+                rotulo = "CNPJ da organização",
+                placeholder = "00.000.000/0000-00",
+                iconeInicio = Icons.Default.Badge,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                dica = "Informe os 14 dígitos do CNPJ",
+                enabled = !carregando,
+            )
+        } else {
+            SosCampoTexto(
+                valor = cpf,
+                aoAlterarValor = aoAlterarCpf,
+                rotulo = "CPF (opcional)",
+                placeholder = "000.000.000-00",
+                iconeInicio = Icons.Default.Badge,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                dica = "Opcional para recibos de doação",
+                enabled = !carregando,
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        CampoSenhaSos(
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SosCampoSenha(
             valor = senha,
             aoAlterarValor = aoAlterarSenha,
             rotulo = "Senha",
-            textoOrientativo = "Mínimo de 8 caracteres",
+            placeholder = "Mínimo de 8 caracteres",
             senhaVisivel = senhaVisivel,
-            aoAlternarVisibilidadeSenha = aoAlternarVisibilidadeSenha,
+            aoAlternarVisibilidade = aoAlternarVisibilidadeSenha,
+            dica = if (senha.isNotEmpty() && senha.length < 8) "Faltam ${8 - senha.length} caracteres" else null,
+            enabled = !carregando,
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        CampoSenhaSos(
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        val confirmacaoIncorreta = confirmacao.isNotEmpty() && confirmacao != senha
+        SosCampoSenha(
             valor = confirmacao,
             aoAlterarValor = aoAlterarConfirmacao,
             rotulo = "Confirmar senha",
-            textoOrientativo = "Digite a senha novamente",
+            placeholder = "Repita a senha",
             senhaVisivel = senhaVisivel,
-            aoAlternarVisibilidadeSenha = aoAlternarVisibilidadeSenha,
+            aoAlternarVisibilidade = aoAlternarVisibilidadeSenha,
+            erro = if (confirmacaoIncorreta) "As senhas não coincidem" else null,
+            enabled = !carregando,
         )
 
-        MensagemRetorno(retorno = retorno)
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Button(
-            onClick = aoCriarConta,
-            enabled = !carregando,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RoxoPrincipal),
-        ) {
-            Text(
-                text = if (carregando) "Salvando..." else if (perfilSelecionado == PerfilUsuario.Doador) {
-                    "Criar minha conta"
-                } else {
-                    "Cadastrar ONG"
-                },
-                fontWeight = FontWeight.SemiBold,
+        if (retorno != null) {
+            BannerAlerta(
+                mensagem = retorno.mensagem,
+                tipo = if (retorno.sucesso) TipoAlerta.Sucesso else TipoAlerta.Erro,
+                modifier = Modifier.padding(bottom = 12.dp),
             )
         }
 
-        if (!tecladoVisivel) {
-            TextButton(
-                onClick = aoVoltarLogin,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 42.dp),
-            ) {
-                Text(text = "Já tenho uma conta — entrar", color = RoxoClaro)
-            }
+        SosBotaoPrimario(
+            texto = if (carregando) "Criando conta..." else if (perfilSelecionado == PerfilUsuario.Doador) {
+                "Criar minha conta"
+            } else {
+                "Cadastrar ONG"
+            },
+            onClick = aoCriarConta,
+            carregando = carregando,
+        )
 
-            TextoTermos(modifier = Modifier.padding(top = 5.dp))
+        if (!tecladoVisivel) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SosBotaoTexto(
+                texto = "Já tenho uma conta — entrar",
+                onClick = aoVoltarLogin,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            TextoTermos(aoClicarTermos = aoExibirTermos)
         }
     }
 }
@@ -738,20 +842,18 @@ private fun SeletorPerfil(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        OpcaoPerfil(
+        OpcaoPerfilCard(
             titulo = "Doador",
-            subtitulo = "Quero ajudar",
-            simbolo = "♥",
-            perfil = PerfilUsuario.Doador,
+            subtitulo = "Quero ajudar causas",
+            icone = Icons.Default.VolunteerActivism,
             selecionado = perfilSelecionado == PerfilUsuario.Doador,
             onClick = { aoAlterarPerfil(PerfilUsuario.Doador) },
             modifier = Modifier.weight(1f),
         )
-        OpcaoPerfil(
+        OpcaoPerfilCard(
             titulo = "ONG",
             subtitulo = "Represento uma ONG",
-            simbolo = "⌂",
-            perfil = PerfilUsuario.Ong,
+            icone = Icons.Default.CorporateFare,
             selecionado = perfilSelecionado == PerfilUsuario.Ong,
             onClick = { aoAlterarPerfil(PerfilUsuario.Ong) },
             modifier = Modifier.weight(1f),
@@ -760,89 +862,66 @@ private fun SeletorPerfil(
 }
 
 @Composable
-private fun OpcaoPerfil(
+private fun OpcaoPerfilCard(
     titulo: String,
     subtitulo: String,
-    simbolo: String,
-    perfil: PerfilUsuario,
+    icone: ImageVector,
     selecionado: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val transicaoInfinita = rememberInfiniteTransition(label = "icone-perfil-$titulo")
-    val escalaCartaoSelecionado by animateFloatAsState(
-        targetValue = if (selecionado) 1.015f else 1f,
-        animationSpec = tween(durationMillis = 220),
-        label = "escala-cartao-perfil-$titulo",
+    val corBorda by animateColorAsState(
+        targetValue = if (selecionado) RoxoClaro else BordaPadrao,
+        animationSpec = tween(180),
+        label = "borda-perfil",
     )
-    val escalaCoracao by transicaoInfinita.animateFloat(
-        initialValue = 1f,
-        targetValue = if (selecionado && perfil == PerfilUsuario.Doador) 1.18f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 720),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulso-coracao",
-    )
-    val rotacaoOng by transicaoInfinita.animateFloat(
-        initialValue = 0f,
-        targetValue = if (selecionado && perfil == PerfilUsuario.Ong) 8f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 950),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "balanco-ong",
+    val corFundo by animateColorAsState(
+        targetValue = if (selecionado) RoxoContainer.copy(alpha = 0.5f) else FundoCampo,
+        animationSpec = tween(180),
+        label = "fundo-perfil",
     )
 
-    Button(
-        onClick = onClick,
+    Surface(
         modifier = modifier
-            .heightIn(min = 62.dp)
-            .graphicsLayer {
-                scaleX = escalaCartaoSelecionado
-                scaleY = escalaCartaoSelecionado
-            },
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .heightIn(min = 68.dp),
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selecionado) RoxoClaro else BordaCampo,
-        ),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selecionado) {
-                RoxoPrincipal.copy(alpha = 0.22f)
-            } else {
-                FundoCampo
-            },
-            contentColor = TextoPrincipal,
-        ),
-        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 7.dp),
+        border = BorderStroke(1.5.dp, corBorda),
+        color = corFundo,
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = simbolo,
-                color = RoxoClaro,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = if (perfil == PerfilUsuario.Doador) escalaCoracao else 1f
-                    scaleY = if (perfil == PerfilUsuario.Doador) escalaCoracao else 1f
-                    rotationZ = if (perfil == PerfilUsuario.Ong) rotacaoOng else 0f
-                },
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        if (selecionado) RoxoPrincipal.copy(alpha = 0.3f) else FundoSuperficieElevada,
+                        CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icone,
+                    contentDescription = null,
+                    tint = if (selecionado) RoxoClaro else TextoSecundario,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Column {
                 Text(
                     text = titulo,
                     color = TextoPrincipal,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (selecionado) FontWeight.Bold else FontWeight.SemiBold,
                 )
                 Text(
                     text = subtitulo,
                     color = TextoSecundario,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )
             }
@@ -862,10 +941,9 @@ private fun EstruturaTelaAutenticacao(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(FundoAplicativo)
+            .background(FundoApp)
             .imePadding(),
     ) {
-        // Com o teclado aberto, o cabeçalho some para priorizar os campos.
         if (!tecladoVisivel) {
             CabecalhoPrincipal(compacto = cabecalhoCompacto)
         }
@@ -874,7 +952,7 @@ private fun EstruturaTelaAutenticacao(
                 .fillMaxWidth()
                 .weight(1f)
                 .offset(y = if (tecladoVisivel) 0.dp else (-22).dp),
-            color = FundoPainel,
+            color = FundoSuperficie,
             shape = RoundedCornerShape(
                 topStart = if (tecladoVisivel) 0.dp else 28.dp,
                 topEnd = if (tecladoVisivel) 0.dp else 28.dp,
@@ -883,12 +961,11 @@ private fun EstruturaTelaAutenticacao(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
                     .padding(
-                        horizontal = 20.dp,
-                        vertical = if (tecladoVisivel) 12.dp else 18.dp,
+                        horizontal = 22.dp,
+                        vertical = if (tecladoVisivel) 14.dp else 22.dp,
                     ),
             ) {
                 conteudo(tecladoVisivel)
@@ -902,7 +979,7 @@ private fun CabecalhoPrincipal(
     compacto: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val alturaCabecalho = if (compacto) 180.dp else 245.dp
+    val alturaCabecalho = if (compacto) 175.dp else 235.dp
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -910,9 +987,9 @@ private fun CabecalhoPrincipal(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF12113C),
-                        Color(0xFF291172),
-                        Color(0xFF461694),
+                        Color(0xFF0F0E2A),
+                        Color(0xFF231057),
+                        Color(0xFF431688),
                     ),
                     start = Offset.Zero,
                     end = Offset(900f, 900f),
@@ -921,29 +998,32 @@ private fun CabecalhoPrincipal(
             .statusBarsPadding()
             .padding(horizontal = 22.dp, vertical = 14.dp),
     ) {
-        LogoSos(modifier = Modifier.align(Alignment.TopStart))
+        SosLogo(
+            modifier = Modifier.align(Alignment.TopStart),
+            tamanhoIcone = 36.dp,
+            tamanhoTextoSp = 28,
+        )
 
         if (!compacto) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(0.52f)
-                    .padding(bottom = 9.dp),
+                    .fillMaxWidth(0.54f)
+                    .padding(bottom = 10.dp),
             ) {
                 Text(
                     text = "Conectando pessoas.",
                     color = Color(0xFFD6D0EC),
                     fontSize = 16.sp,
-                    lineHeight = 19.sp,
+                    lineHeight = 20.sp,
                     maxLines = 1,
                 )
                 Text(
-                    text = "Transformando\ncomunidades.",
+                    text = "Transformando comunidades.",
                     color = Color.White,
                     fontSize = 18.sp,
-                    lineHeight = 21.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
@@ -952,44 +1032,8 @@ private fun CabecalhoPrincipal(
         IlustracaoComunidade(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .fillMaxWidth(if (compacto) 0.54f else 0.56f)
-                .height(if (compacto) 118.dp else 148.dp),
-        )
-    }
-}
-
-@Composable
-private fun LogoSos(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(modifier = Modifier.size(38.dp)) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = 38.dp, height = 14.dp)
-                    .background(RoxoClaro, RoundedCornerShape(7.dp)),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = 14.dp, height = 38.dp)
-                    .background(RoxoClaro, RoundedCornerShape(7.dp)),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(9.dp)
-                    .background(Color(0xFFFF6478), RoundedCornerShape(50)),
-            )
-        }
-        Text(
-            text = "SOS+",
-            color = Color.White,
-            fontSize = 31.sp,
-            fontWeight = FontWeight.Bold,
+                .fillMaxWidth(if (compacto) 0.52f else 0.54f)
+                .height(if (compacto) 115.dp else 140.dp),
         )
     }
 }
@@ -997,7 +1041,7 @@ private fun LogoSos(modifier: Modifier = Modifier) {
 @Composable
 private fun IlustracaoComunidade(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val corLinha = Color(0xFFB790FF).copy(alpha = 0.42f)
+        val corLinha = Color(0xFFB790FF).copy(alpha = 0.35f)
         val corPessoa = Color(0xFF9A5BF2)
         val corPessoaClara = Color(0xFFB790FF)
 
@@ -1009,7 +1053,7 @@ private fun IlustracaoComunidade(modifier: Modifier = Modifier) {
             cap = StrokeCap.Round,
         )
         drawCircle(corPessoaClara, radius = 8f, center = Offset(size.width * 0.08f, size.height * 0.46f))
-        drawCircle(Color(0xFFFF6478), radius = 8f, center = Offset(size.width * 0.91f, size.height * 0.22f))
+        drawCircle(CoralAcento, radius = 8f, center = Offset(size.width * 0.91f, size.height * 0.22f))
 
         val centroCoracao = Offset(size.width * 0.56f, size.height * 0.42f)
         val coracao = Path().apply {
@@ -1034,7 +1078,7 @@ private fun IlustracaoComunidade(modifier: Modifier = Modifier) {
         }
         drawPath(
             path = coracao,
-            brush = Brush.verticalGradient(listOf(Color(0xFFFF8A8F), Color(0xFFFF5068))),
+            brush = Brush.verticalGradient(listOf(CoralAcento, CoralAcento)),
         )
 
         drawCircle(
@@ -1061,14 +1105,14 @@ private fun IlustracaoComunidade(modifier: Modifier = Modifier) {
             color = corPessoaClara,
             start = Offset(size.width * 0.31f, size.height * 0.73f),
             end = Offset(size.width * 0.48f, size.height * 0.57f),
-            strokeWidth = 12f,
+            strokeWidth = 10f,
             cap = StrokeCap.Round,
         )
         drawLine(
             color = corPessoaClara,
             start = Offset(size.width * 0.73f, size.height * 0.70f),
             end = Offset(size.width * 0.64f, size.height * 0.56f),
-            strokeWidth = 12f,
+            strokeWidth = 10f,
             cap = StrokeCap.Round,
         )
         drawCircle(
@@ -1081,185 +1125,74 @@ private fun IlustracaoComunidade(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CampoTextoSos(
-    valor: String,
-    aoAlterarValor: (String) -> Unit,
-    rotulo: String,
-    textoOrientativo: String,
-    simboloPrincipal: String,
+private fun TextoTermos(
+    aoClicarTermos: () -> Unit,
     modifier: Modifier = Modifier,
-    keyboardType: KeyboardType = KeyboardType.Text,
 ) {
-    val fonteInteracao = remember { MutableInteractionSource() }
-    val emFoco by fonteInteracao.collectIsFocusedAsState()
-    val escalaCampo by animateFloatAsState(
-        targetValue = if (emFoco) 1.01f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "escala-campo-$rotulo",
-    )
-    val deslocamentoCampo by animateFloatAsState(
-        targetValue = if (emFoco) -2f else 0f,
-        animationSpec = tween(durationMillis = 180),
-        label = "deslocamento-campo-$rotulo",
-    )
-    val escalaSimbolo by animateFloatAsState(
-        targetValue = if (emFoco) 1.16f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "escala-simbolo-$rotulo",
-    )
-
-    OutlinedTextField(
-        value = valor,
-        onValueChange = aoAlterarValor,
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = escalaCampo
-                scaleY = escalaCampo
-                translationY = deslocamentoCampo
-                shadowElevation = if (emFoco) 8f else 0f
-                shape = RoundedCornerShape(14.dp)
-            },
-        label = { Text(rotulo) },
-        placeholder = { Text(textoOrientativo) },
-        leadingIcon = {
-            Text(
-                text = simboloPrincipal,
-                color = RoxoClaro,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = escalaSimbolo
-                    scaleY = escalaSimbolo
-                },
-            )
-        },
-        interactionSource = fonteInteracao,
-        singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        colors = coresCampoTextoSos(),
-    )
+    TextButton(
+        onClick = aoClicarTermos,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "Ao continuar, você concorda com nossos Termos e Privacidade",
+            color = TextoTerciario,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
-private fun CampoSenhaSos(
-    valor: String,
-    aoAlterarValor: (String) -> Unit,
-    rotulo: String,
-    textoOrientativo: String,
-    senhaVisivel: Boolean,
-    aoAlternarVisibilidadeSenha: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val fonteInteracao = remember { MutableInteractionSource() }
-    val emFoco by fonteInteracao.collectIsFocusedAsState()
-    val escalaCampo by animateFloatAsState(
-        targetValue = if (emFoco) 1.01f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "escala-campo-senha-$rotulo",
-    )
-    val deslocamentoCampo by animateFloatAsState(
-        targetValue = if (emFoco) -2f else 0f,
-        animationSpec = tween(durationMillis = 180),
-        label = "deslocamento-campo-senha-$rotulo",
-    )
-    val escalaSimbolo by animateFloatAsState(
-        targetValue = if (emFoco) 1.16f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "escala-simbolo-senha-$rotulo",
-    )
-
-    OutlinedTextField(
-        value = valor,
-        onValueChange = aoAlterarValor,
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = escalaCampo
-                scaleY = escalaCampo
-                translationY = deslocamentoCampo
-                shadowElevation = if (emFoco) 8f else 0f
-                shape = RoundedCornerShape(14.dp)
-            },
-        label = { Text(rotulo) },
-        placeholder = { Text(textoOrientativo) },
-        leadingIcon = {
+private fun DialogoTermosEPrivacidade(aoFechar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = FundoSuperficieElevada,
+        title = {
             Text(
-                text = "●",
-                color = RoxoClaro,
-                fontSize = 12.sp,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = escalaSimbolo
-                    scaleY = escalaSimbolo
-                },
+                text = "Termos e Privacidade",
+                style = MaterialTheme.typography.titleLarge,
+                color = TextoPrincipal,
+                fontWeight = FontWeight.Bold,
             )
         },
-        trailingIcon = {
-            TextButton(
-                onClick = aoAlternarVisibilidadeSenha,
-                contentPadding = PaddingValues(horizontal = 8.dp),
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = if (senhaVisivel) "Ocultar" else "Mostrar",
+                    text = "Termos de Uso do SOS+",
+                    style = MaterialTheme.typography.titleSmall,
                     color = RoxoClaro,
-                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "O SOS+ é uma plataforma solidária sem fins lucrativos que conecta cidadãos dispostos a ajudar organizações sociais locais.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Privacidade e Proteção de Dados",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = RoxoClaro,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Seus dados de cadastro e localização são utilizados exclusivamente para identificar ONGs próximas e validar intenções de apoio. As senhas são criptografadas e nenhuma informação financeira real é armazenada.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
                 )
             }
         },
-        interactionSource = fonteInteracao,
-        visualTransformation = if (senhaVisivel) {
-            VisualTransformation.None
-        } else {
-            PasswordVisualTransformation()
+        confirmButton = {
+            SosBotaoPrimario(
+                texto = "Entendi",
+                onClick = aoFechar,
+                modifier = Modifier.width(120.dp),
+            )
         },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        colors = coresCampoTextoSos(),
-    )
-}
-
-@Composable
-private fun coresCampoTextoSos() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = TextoPrincipal,
-    unfocusedTextColor = TextoPrincipal,
-    focusedContainerColor = FundoCampo,
-    unfocusedContainerColor = FundoCampo,
-    focusedBorderColor = RoxoClaro,
-    unfocusedBorderColor = BordaCampo,
-    focusedLabelColor = RoxoClaro,
-    unfocusedLabelColor = TextoSecundario,
-    cursorColor = RoxoClaro,
-    focusedPlaceholderColor = TextoSecundario.copy(alpha = 0.7f),
-    unfocusedPlaceholderColor = TextoSecundario.copy(alpha = 0.7f),
-)
-
-@Composable
-private fun MensagemRetorno(
-    retorno: RetornoAutenticacao?,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = retorno?.mensagem.orEmpty(),
-        color = if (retorno?.sucesso == true) CorSucesso else CorErro,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 28.dp)
-            .padding(vertical = 5.dp),
-    )
-}
-
-@Composable
-private fun TextoTermos(modifier: Modifier = Modifier) {
-    Text(
-        text = "Ao continuar, você concorda com nossos Termos e Política de Privacidade.",
-        color = TextoSecundario.copy(alpha = 0.75f),
-        style = MaterialTheme.typography.labelSmall,
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp),
     )
 }
 
@@ -1267,26 +1200,3 @@ private fun erroDaApi(error: IOException): RetornoAutenticacao = RetornoAutentic
     if (error is AuthApiException) error.message.orEmpty()
     else "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente."
 )
-
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun PreviaTelaLogin() {
-    SosTheme(darkTheme = true, dynamicColor = false) {
-        TelaLogin(
-            perfilSelecionado = PerfilUsuario.Doador,
-            usuario = "",
-            senha = "",
-            senhaVisivel = false,
-            lembrarUsuario = false,
-            retorno = null,
-            aoAlterarPerfil = {},
-            aoAlterarUsuario = {},
-            aoAlterarSenha = {},
-            aoAlternarVisibilidadeSenha = {},
-            aoAlterarLembrarUsuario = {},
-            aoRecuperarSenha = {},
-            aoEntrar = {},
-            aoCriarConta = {},
-        )
-    }
-}

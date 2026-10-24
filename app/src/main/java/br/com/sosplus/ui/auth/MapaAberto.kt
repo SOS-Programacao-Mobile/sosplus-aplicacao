@@ -17,6 +17,7 @@ import android.location.LocationManager
 import android.net.Uri
 import android.os.Looper
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -24,12 +25,20 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CorporateFare
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,20 +63,19 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import br.com.sosplus.BuildConfig
+import br.com.sosplus.data.Categoria
+import br.com.sosplus.data.DomainRepository
 import br.com.sosplus.data.LocalizacaoUsuario
-import kotlinx.coroutines.Dispatchers
+import br.com.sosplus.data.OrganizacaoPublica
+import br.com.sosplus.ui.components.SosCampoTexto
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import java.net.HttpURLConnection
-import java.net.URL
-import br.com.sosplus.data.NetworkLogger
 import java.util.Locale
 
 data class OngItem(
@@ -79,46 +87,11 @@ data class OngItem(
     val longitude: Double,
     val descricao: String = "",
     val endereco: String = "Nova Friburgo, RJ",
+    val categorias: List<Categoria> = emptyList(),
 )
 
-val OngsPadraoNovaFriburgo = listOf(
-    OngItem(
-        id = "1",
-        nome = "Casa do Bem",
-        categoria = "Apoio social",
-        icone = "♡",
-        latitude = -22.2750,
-        longitude = -42.5360,
-        descricao = "Arrecadação de alimentos e amparo a famílias em vulnerabilidade social.",
-    ),
-    OngItem(
-        id = "2",
-        nome = "Amigos dos Animais",
-        categoria = "Proteção animal",
-        icone = "🐾",
-        latitude = -22.2770,
-        longitude = -42.5220,
-        descricao = "Resgate, reabilitação e campanhas de adoção responsável na região serrana.",
-    ),
-    OngItem(
-        id = "3",
-        nome = "Projeto Novo Amanhã",
-        categoria = "Educação",
-        icone = "📚",
-        latitude = -22.2880,
-        longitude = -42.5180,
-        descricao = "Reforço escolar, oficinas culturais e apoio ao desenvolvimento infantil.",
-    ),
-    OngItem(
-        id = "4",
-        nome = "Bazar Solidário SOS",
-        categoria = "Alimentação & Agasalho",
-        icone = "🛍",
-        latitude = -22.2890,
-        longitude = -42.5410,
-        descricao = "Distribuição de cestas básicas e agasalhos para comunidades locais.",
-    ),
-)
+internal fun filtrarOngsPorCategoria(ongs: List<OngItem>, categoriaId: String?): List<OngItem> =
+    if (categoriaId == null) ongs else ongs.filter { ong -> ong.categorias.any { it.id == categoriaId } }
 
 // Ponto central padrão de Nova Friburgo, RJ
 val PontoCentralPadrao = GeoPoint(-22.2819, -42.5311)
@@ -362,6 +335,7 @@ private fun criarMarcadorOngCompacto(context: Context, icone: String): Drawable 
  */
 @Composable
 fun TelaMapaDoador(
+    token: String? = null,
     areaSelecionada: AreaDoador,
     aoSelecionarArea: (AreaDoador) -> Unit,
     localizacaoUsuario: LocalizacaoUsuario? = null,
@@ -381,12 +355,79 @@ fun TelaMapaDoador(
     var autorizado by remember { mutableStateOf(permitido()) }
     var ativo by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var posicao by remember { mutableStateOf<Location?>(null) }
-    var ongs by remember { mutableStateOf(OngsPadraoNovaFriburgo) }
+    var ongs by remember { mutableStateOf<List<OngItem>>(emptyList()) }
+    var carregandoOngs by remember { mutableStateOf(true) }
+    var erroOngs by remember { mutableStateOf<String?>(null) }
     var ongSelecionada by remember { mutableStateOf<OngItem?>(null) }
     var mapaEscuro by remember { mutableStateOf(true) }
     var exibirDialogFiltro by remember { mutableStateOf(false) }
     var filtroCategoria by remember { mutableStateOf<String?>(null) }
     var exibirTodasOngs by remember { mutableStateOf(false) }
+    var catalogo by remember { mutableStateOf<List<OrganizacaoPublica>>(emptyList()) }
+    var categoriaCatalogo by remember { mutableStateOf<String?>(null) }
+    var proximaPaginaCatalogo by remember { mutableStateOf<String?>(null) }
+    var carregandoCatalogo by remember { mutableStateOf(false) }
+    var erroCatalogo by remember { mutableStateOf<String?>(null) }
+    var ongIdAberta by remember { mutableStateOf<String?>(null) }
+    var campanhaIdAberta by remember { mutableStateOf<String?>(null) }
+    var categoriasDisponiveis by remember { mutableStateOf<List<Categoria>>(emptyList()) }
+    val repository = remember { DomainRepository() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        try { categoriasDisponiveis = repository.categorias() }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { /* O mapa e o catálogo continuam disponíveis sem o filtro. */ }
+    }
+    fun abrirPerfil(id: String) {
+        ongIdAberta = id
+    }
+
+    BackHandler(enabled = campanhaIdAberta != null || ongIdAberta != null) {
+        if (campanhaIdAberta != null) campanhaIdAberta = null
+        else ongIdAberta = null
+    }
+
+    if (campanhaIdAberta != null) {
+        DetalheCampanha(
+            campanhaId = requireNotNull(campanhaIdAberta),
+            token = token.orEmpty(),
+            aoVoltar = { campanhaIdAberta = null },
+            aoAbrirOng = { idOng ->
+                campanhaIdAberta = null
+                ongIdAberta = idOng
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    if (ongIdAberta != null) {
+        PerfilOngPublico(
+            ongId = requireNotNull(ongIdAberta),
+            token = token.orEmpty(),
+            aoVoltar = { ongIdAberta = null },
+            aoAbrirCampanha = { idCamp ->
+                campanhaIdAberta = idCamp
+            },
+            modifier = modifier,
+        )
+        return
+    }
+    fun carregarCatalogo(cursor: String? = null, reiniciar: Boolean = false) {
+        if (carregandoCatalogo) return
+        carregandoCatalogo = true
+        erroCatalogo = null
+        scope.launch {
+            try {
+                val page = repository.organizacoes(cursor, filtroCategoria)
+                catalogo = if (reiniciar) page.itens else catalogo + page.itens
+                proximaPaginaCatalogo = page.proximaPagina
+                categoriaCatalogo = filtroCategoria
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { erroCatalogo = error.message ?: "Não foi possível carregar o catálogo." }
+            finally { carregandoCatalogo = false }
+        }
+    }
     var mapaCentralizadoNaPosicao by remember { mutableStateOf(false) }
     var negadaDefinitivamente by rememberSaveable { mutableStateOf(false) }
     var permissaoSolicitadaAoAbrir by rememberSaveable { mutableStateOf(false) }
@@ -592,61 +633,27 @@ fun TelaMapaDoador(
         map.invalidate()
     }
 
-    // Busca ONGs do backend (e mescla com as ONGs de referência)
+    // A lista remota substitui o estado inteiro, inclusive quando não há resultados.
     LaunchedEffect(ativo) {
         if (ativo) while (true) {
             try {
-                val novasOngs = withContext(Dispatchers.IO) {
-                    val urlStr = BuildConfig.API_BASE_URL.trimEnd('/') + "/api/v1/ongs/mapa"
-                    val call = NetworkLogger.request("GET", urlStr)
-                    val c = URL(urlStr).openConnection() as HttpURLConnection
-                    try {
-                        c.connectTimeout = 8000
-                        c.readTimeout = 8000
-                        c.setRequestProperty("X-Request-Id", call.id)
-                        val status = c.responseCode
-                        val stream = if (status in 200..299) c.inputStream else c.errorStream
-                        val responseBody = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                        NetworkLogger.response(call, status, responseBody)
-                        if (status == 200) {
-                            val resp = JSONObject(responseBody)
-                            val array = resp.getJSONArray("ongs")
-                            List(array.length()) { i ->
-                                val o = array.getJSONObject(i)
-                                OngItem(
-                                    id = o.optString("id", (i + 10).toString()),
-                                    nome = o.getString("nome"),
-                                    categoria = "Apoio social",
-                                    icone = "♡",
-                                    latitude = o.getDouble("latitude"),
-                                    longitude = o.getDouble("longitude"),
-                                )
-                            }
-                        } else emptyList()
-                    } catch (error: Exception) {
-                        NetworkLogger.failure(call, error)
-                        throw error
-                    } finally {
-                        c.disconnect()
-                    }
+                val remotas = repository.mapaOngs()
+                ongs = remotas.map { ong ->
+                    val categorias = ong.categorias
+                    OngItem(ong.id, ong.nome, categorias.firstOrNull()?.nome ?: "Sem categoria", "♡",
+                        ong.latitude, ong.longitude, categorias = categorias)
                 }
-                if (novasOngs.isNotEmpty()) {
-                    val existentesIds = novasOngs.map { it.id }.toSet()
-                    val mescladas = novasOngs + OngsPadraoNovaFriburgo.filter { it.id !in existentesIds }
-                    // Só altera o estado se a resposta trouxe uma mudança real. Assim,
-                    // um polling sem novidades não força uma nova montagem do mapa.
-                    if (mescladas != ongs) ongs = mescladas
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {}
+                erroOngs = null
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { erroOngs = error.message ?: "Não foi possível carregar as ONGs." }
+            finally { carregandoOngs = false }
             delay(INTERVALO_ATUALIZACAO_ONGS_MS)
         }
     }
 
     // Filtro ativo de ONGs
     val ongsFiltradas = remember(ongs, filtroCategoria) {
-        if (filtroCategoria == null) ongs else ongs.filter { it.categoria == filtroCategoria }
+        filtrarOngsPorCategoria(ongs, filtroCategoria)
     }
     val estadoLocalizacao = estadoLocalizacaoMapa(
         autorizado = autorizado,
@@ -716,6 +723,7 @@ fun TelaMapaDoador(
                     ongSelecionada = ong
                     map.controller.setZoom(16.5)
                     map.controller.animateTo(position)
+                                    abrirPerfil(ong.id)
                     true
                 }
             }
@@ -797,7 +805,9 @@ fun TelaMapaDoador(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Encontre causas para apoiar na sua região",
+                    text = if (ongsFiltradas.size > MAX_MARCADORES_ONG_NO_MAPA)
+                        "Exibindo até $MAX_MARCADORES_ONG_NO_MAPA pins · veja todas no catálogo"
+                    else "Encontre causas para apoiar na sua região",
                     color = TextoSecundarioInicio,
                     fontSize = 13.5.sp,
                     modifier = Modifier.padding(top = 3.dp),
@@ -861,6 +871,30 @@ fun TelaMapaDoador(
                     Box(modifier = Modifier.fillMaxSize()) {
                         // osmdroid MapView
                         AndroidView(factory = { map }, modifier = Modifier.fillMaxSize())
+                        when {
+                            carregandoOngs && ongs.isEmpty() -> CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center), color = RoxoClaroInicio,
+                            )
+                            erroOngs != null -> Surface(
+                                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                                color = SuperficieInicio.copy(alpha = 0.96f), shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, BordaInicio),
+                            ) {
+                                Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(erroOngs ?: "Erro", color = TextoInicio)
+                                    if (ongs.isNotEmpty()) Text("Os resultados exibidos podem estar desatualizados.", color = TextoSecundarioInicio)
+                                    TextButton(onClick = { carregandoOngs = true; scope.launch {
+                                        try { val remote = repository.mapaOngs(); ongs = remote.map { item ->
+                                            OngItem(item.id, item.nome, item.categorias.firstOrNull()?.nome ?: "Sem categoria", "♡", item.latitude, item.longitude, categorias = item.categorias)
+                                        }; erroOngs = null } catch (e: CancellationException) { throw e }
+                                        catch (e: Exception) { erroOngs = e.message ?: "Não foi possível carregar as ONGs." }
+                                        finally { carregandoOngs = false }
+                                    } }) { Text("Tentar novamente", color = RoxoClaroInicio) }
+                                }
+                            }
+                            ongs.isEmpty() -> Text("Nenhuma ONG com localização cadastrada.", color = TextoInicio,
+                                modifier = Modifier.align(Alignment.Center).background(SuperficieInicio.copy(alpha = .9f), RoundedCornerShape(12.dp)).padding(12.dp))
+                        }
 
                         // Pílula flutuante com a cidade/estado salvos no último login.
                         Surface(
@@ -876,7 +910,12 @@ fun TelaMapaDoador(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                Text("📍", fontSize = 13.sp)
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = RoxoClaroInicio,
+                                    modifier = Modifier.size(16.dp),
+                                )
                                 Text(
                                     text = nomeLocalidade,
                                     color = TextoInicio,
@@ -932,11 +971,12 @@ fun TelaMapaDoador(
                             // Botão de Centralização GPS (mira) com zoom ampliado
                             Surface(
                                 modifier = Modifier
-                                    .size(44.dp)
-                                    .clickable { centralizarNoUsuario() },
+                                    .size(48.dp)
+                                    .clickable(onClickLabel = "Centralizar localização") { centralizarNoUsuario() },
                                 color = SuperficieInicio.copy(alpha = 0.95f),
                                 shape = CircleShape,
                                 border = BorderStroke(1.dp, BordaInicio),
+                                tonalElevation = 6.dp,
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     IconeMiraGps(cor = TextoInicio)
@@ -946,11 +986,12 @@ fun TelaMapaDoador(
                             // Botão de Camadas (Layers)
                             Surface(
                                 modifier = Modifier
-                                    .size(44.dp)
-                                    .clickable { mapaEscuro = !mapaEscuro },
+                                    .size(48.dp)
+                                    .clickable(onClickLabel = "Alternar contraste do mapa") { mapaEscuro = !mapaEscuro },
                                 color = SuperficieInicio.copy(alpha = 0.95f),
                                 shape = CircleShape,
                                 border = BorderStroke(1.dp, BordaInicio),
+                                tonalElevation = 6.dp,
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     IconeCamadasMapa(cor = if (mapaEscuro) RoxoClaroInicio else TextoInicio)
@@ -1060,6 +1101,7 @@ fun TelaMapaDoador(
                                     ongSelecionada = ong
                                     map.controller.setZoom(16.5)
                                     map.controller.animateTo(GeoPoint(ong.latitude, ong.longitude))
+                                    abrirPerfil(ong.id)
                                 },
                             )
                         }
@@ -1086,13 +1128,7 @@ fun TelaMapaDoador(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val categorias = listOf(
-                            null to "Todas as causas",
-                            "Apoio social" to "♡  Apoio social",
-                            "Proteção animal" to "🐾  Proteção animal",
-                            "Educação" to "📚  Educação",
-                            "Alimentação & Agasalho" to "🛍  Alimentação & Agasalho",
-                        )
+                        val categorias = listOf(null to "Todas as causas") + categoriasDisponiveis.map { it.id to it.nome }
                         categorias.forEach { (cat, rotulo) ->
                             val selecionado = filtroCategoria == cat
                             Surface(
@@ -1127,53 +1163,92 @@ fun TelaMapaDoador(
 
         // Diálogo "Ver todas as ONGs"
         if (exibirTodasOngs) {
+            var buscaCatalogo by remember { mutableStateOf("") }
+            LaunchedEffect(exibirTodasOngs, filtroCategoria) {
+                if (catalogo.isEmpty() || categoriaCatalogo != filtroCategoria) carregarCatalogo(reiniciar = true)
+            }
+            val catalogoFiltrado = remember(catalogo, buscaCatalogo) {
+                if (buscaCatalogo.isBlank()) catalogo
+                else catalogo.filter {
+                    it.nome.contains(buscaCatalogo, ignoreCase = true) ||
+                    it.categorias.any { cat -> cat.nome.contains(buscaCatalogo, ignoreCase = true) }
+                }
+            }
+
             AlertDialog(
                 onDismissRequest = { exibirTodasOngs = false },
                 containerColor = SuperficieInicio,
                 shape = RoundedCornerShape(22.dp),
                 title = {
-                    Text("Todas as ONGs na região", color = TextoInicio, fontWeight = FontWeight.Bold)
+                    Text("Catálogo de ONGs", color = TextoInicio, fontWeight = FontWeight.Bold)
                 },
                 text = {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(ongsFiltradas, key = { it.id }) { ong ->
-                            val distMetros = GeoPoint(ong.latitude, ong.longitude).distanceToAsDouble(pontoReferencia)
-                            val distTexto = String.format(Locale.forLanguageTag("pt-BR"), "%.1f km", distMetros / 1000.0)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        SosCampoTexto(
+                            valor = buscaCatalogo,
+                            aoMudarValor = { buscaCatalogo = it },
+                            rotulo = "Buscar por nome ou causa",
+                            icone = Icons.Default.Search,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        )
 
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        ongSelecionada = ong
-                                        exibirTodasOngs = false
-                                        map.controller.setZoom(16.5)
-                                        map.controller.animateTo(GeoPoint(ong.latitude, ong.longitude))
-                                    },
-                                color = Color(0xFF161C2E),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, BordaInicio),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(catalogoFiltrado, key = { it.id }) { ong ->
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            exibirTodasOngs = false
+                                            abrirPerfil(ong.id)
+                                        },
+                                    color = Color(0xFF161C2E),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, BordaInicio),
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(RoxoInicio, CircleShape),
-                                        contentAlignment = Alignment.Center,
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     ) {
-                                        Text(ong.icone, color = Color.White, fontSize = 16.sp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .background(RoxoInicio, CircleShape),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CorporateFare,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(ong.nome, color = TextoInicio, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            Text(ong.categorias.joinToString { it.nome }.ifBlank { "Sem categoria" }, color = TextoSecundarioInicio, fontSize = 12.sp)
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.ChevronRight,
+                                            contentDescription = null,
+                                            tint = TextoSecundarioInicio,
+                                            modifier = Modifier.size(18.dp),
+                                        )
                                     }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(ong.nome, color = TextoInicio, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(ong.categoria, color = TextoSecundarioInicio, fontSize = 12.sp)
+                                }
+                            }
+                            item {
+                                when {
+                                    carregandoCatalogo -> CircularProgressIndicator(color = RoxoClaroInicio)
+                                    erroCatalogo != null -> TextButton(onClick = { carregarCatalogo(if (catalogo.isEmpty()) null else proximaPaginaCatalogo, reiniciar = catalogo.isEmpty()) }) {
+                                        Text("${erroCatalogo}. Tentar novamente", color = Color(0xFFFF8E9B))
                                     }
-                                    Text("📍 $distTexto", color = RoxoClaroInicio, fontSize = 12.sp)
+                                    catalogoFiltrado.isEmpty() && !carregandoCatalogo -> Text("Nenhuma ONG encontrada com esse filtro.", color = TextoSecundarioInicio)
+                                    proximaPaginaCatalogo != null -> TextButton(onClick = { carregarCatalogo(proximaPaginaCatalogo) }) {
+                                        Text("Carregar mais", color = RoxoClaroInicio)
+                                    }
                                 }
                             }
                         }
@@ -1202,8 +1277,8 @@ private fun CartaoOngCarrossel(
 ) {
     Surface(
         modifier = modifier
-            .width(240.dp)
-            .height(78.dp)
+            .width(248.dp)
+            .height(82.dp)
             .clickable(onClick = onClick),
         color = Color(0xFF151B2E),
         shape = RoundedCornerShape(18.dp),
@@ -1215,17 +1290,18 @@ private fun CartaoOngCarrossel(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Avatar circular roxo com símbolo
+            // Avatar circular roxo com ícone Material
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .background(RoxoInicio, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = ong.icone,
-                    color = Color.White,
-                    fontSize = 18.sp,
+                Icon(
+                    imageVector = Icons.Default.CorporateFare,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
                 )
             }
 
@@ -1253,10 +1329,15 @@ private fun CartaoOngCarrossel(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.padding(top = 1.dp),
                 ) {
-                    Text("📍", fontSize = 10.sp)
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = RoxoClaroInicio,
+                        modifier = Modifier.size(12.dp),
+                    )
                     Text(
                         text = distanciaTexto,
                         color = TextoSecundarioInicio,
@@ -1266,11 +1347,11 @@ private fun CartaoOngCarrossel(
             }
 
             // Seta direita
-            Text(
-                text = "›",
-                color = TextoSecundarioInicio,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "Ver instituição",
+                tint = TextoSecundarioInicio,
+                modifier = Modifier.size(20.dp),
             )
         }
     }

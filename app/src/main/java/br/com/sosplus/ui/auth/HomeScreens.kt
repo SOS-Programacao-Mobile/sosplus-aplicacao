@@ -1,28 +1,22 @@
 package br.com.sosplus.ui.auth
 
-import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.location.Location
-import android.os.Looper
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.ui.draw.clip
-import br.com.sosplus.data.UsuarioAutenticado
-import br.com.sosplus.data.DadosPessoaisUsuario
-import br.com.sosplus.data.DoacaoUsuario
-
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,32 +28,58 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CorporateFare
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DynamicFeed
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -68,84 +88,122 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import br.com.sosplus.data.Campanha
+import br.com.sosplus.data.DadosPessoaisUsuario
+import br.com.sosplus.data.DoacaoUsuario
+import br.com.sosplus.data.DomainRepository
+import br.com.sosplus.data.LocalizacaoUsuario
+import br.com.sosplus.data.OrganizacaoPublica
+import br.com.sosplus.data.UsuarioAutenticado
+import br.com.sosplus.ui.components.BannerAlerta
+import br.com.sosplus.ui.components.BarraNavegacaoSos
+import br.com.sosplus.ui.components.ChipStatus
+import br.com.sosplus.ui.components.DialogoConfirmacao
+import br.com.sosplus.ui.components.EstadoCarregando
+import br.com.sosplus.ui.components.EstadoErro
+import br.com.sosplus.ui.components.EstadoVazio
+import br.com.sosplus.ui.components.Formatadores
+import br.com.sosplus.ui.components.ItemNavegacao
+import br.com.sosplus.ui.components.SosBotaoPrimario
+import br.com.sosplus.ui.components.SosBotaoSecundario
+import br.com.sosplus.ui.components.SosCampoSenha
+import br.com.sosplus.ui.components.SosCampoTexto
+import br.com.sosplus.ui.components.SosCard
+import br.com.sosplus.ui.components.SosLogo
+import br.com.sosplus.ui.components.SosTopBar
+import br.com.sosplus.ui.components.TipoAlerta
+import br.com.sosplus.ui.theme.BordaPadrao
+import br.com.sosplus.ui.theme.CoralAcento
+import br.com.sosplus.ui.theme.CorErro
+import br.com.sosplus.ui.theme.CorSucesso
+import br.com.sosplus.ui.theme.DivisorPadrao
+import br.com.sosplus.ui.theme.FundoApp
+import br.com.sosplus.ui.theme.FundoCampo
+import br.com.sosplus.ui.theme.FundoSuperficie
+import br.com.sosplus.ui.theme.FundoSuperficieElevada
+import br.com.sosplus.ui.theme.RoxoClaro
+import br.com.sosplus.ui.theme.RoxoContainer
+import br.com.sosplus.ui.theme.RoxoPrincipal
+import br.com.sosplus.ui.theme.TextoPrincipal
+import br.com.sosplus.ui.theme.TextoSecundario
+import br.com.sosplus.ui.theme.TextoTerciario
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
-val FundoInicio = Color(0xFF090E1B)
-val SuperficieInicio = Color(0xFF11182A)
-val BordaInicio = Color(0xFF303950)
-val RoxoInicio = Color(0xFF803DF1)
-val RoxoClaroInicio = Color(0xFF9C64FF)
-val TextoInicio = Color(0xFFF8F7FF)
-val TextoSecundarioInicio = Color(0xFFAAA8BD)
-val CorSucessoInicio = Color(0xFF62DFA4)
+val FundoInicio = FundoApp
+val SuperficieInicio = FundoSuperficie
+val BordaInicio = BordaPadrao
+val RoxoInicio = RoxoPrincipal
+val RoxoClaroInicio = RoxoClaro
+val TextoInicio = TextoPrincipal
+val TextoSecundarioInicio = TextoSecundario
+val CorSucessoInicio = CorSucesso
 
-private data class CampanhaLocal(
-    val organizacao: String,
-    val titulo: String,
-    val detalhe: String,
-    val simbolo: String,
-    val etiqueta: String,
-    val progresso: Int,
-    val corInicial: Color,
-    val corFinal: Color,
-)
-
-private data class PublicacaoOng(
-    val tipo: TipoPublicacao,
-    val titulo: String,
-    val descricao: String,
-)
-
-private enum class TipoPublicacao(val rotulo: String) {
-    Campanha("Campanha"),
-    Necessidade("Necessidade"),
-}
+fun moedaCampanha(centavos: Long): String = Formatadores.moeda(centavos)
 
 enum class AreaDoador(
-    val icone: String,
+    val icone: ImageVector,
     val rotulo: String,
 ) {
-    Inicio("⌂", "Início"),
-    Mapa("⌖", "Mapa"),
-    Carteira("▣", "Carteira"),
-    Perfil("◉", "Perfil"),
+    Inicio(Icons.Default.Home, "Início"),
+    Mapa(Icons.Default.LocationOn, "Mapa"),
+    Carteira(Icons.Default.VolunteerActivism, "Doações"),
+    Perfil(Icons.Default.Person, "Perfil"),
+}
+
+enum class AreaOng(
+    val icone: ImageVector,
+    val rotulo: String,
+) {
+    Inicio(Icons.Default.Home, "Início"),
+    CampanhaAtual(Icons.Default.Favorite, "Campanha atual"),
+    CriarCampanha(Icons.Default.Add, "Criar campanha"),
+    Campanhas(Icons.Default.Campaign, "Campanhas"),
+    Dashboard(Icons.Default.Dashboard, "Dashboard"),
+    Missao(Icons.Default.VolunteerActivism, "Nossa missão"),
+    Materiais(Icons.Default.Inventory2, "Materiais"),
+    Publicacoes(Icons.Default.DynamicFeed, "Publicações"),
+    Perfil(Icons.Default.CorporateFare, "Perfil da ONG"),
 }
 
 private enum class OpcaoPerfil(
-    val simbolo: String,
+    val icone: ImageVector,
     val titulo: String,
     val descricao: String,
 ) {
-    ConfigurarPerfil("◉", "Configurar perfil", "Foto e preferências da conta"),
-    MinhasDoacoes("♡", "Minhas doações", "Histórico das suas contribuições"),
-    Pagamentos("\$", "Pagamentos e carteira", "Formas de pagamento e histórico"),
-    Informacoes("i", "Informações pessoais", "Dados vinculados à sua conta"),
-    Senha("↻", "Redefinir senha", "Atualize sua senha com segurança"),
+    Informacoes(Icons.Default.Badge, "Informações pessoais", "Dados cadastrais e informações de saúde"),
+    MinhasDoacoes(Icons.Default.Favorite, "Minhas doações", "Histórico das suas contribuições"),
+    Pagamentos(Icons.Default.VolunteerActivism, "Minhas doações e carteira", "Histórico de contribuições financeiras e materiais"),
+    Senha(Icons.Default.Lock, "Redefinir senha", "Atualize sua credencial com segurança"),
 }
 
 private enum class TelaPerfil { Principal, InformacoesPessoais, RedefinirSenha, MinhasDoacoes }
 
 private data class RetornoPerfil(val mensagem: String, val sucesso: Boolean)
 
+// -------------------------------------------------------------------------------------------------
+// ROTA PRINCIPAL DOADOR
+// -------------------------------------------------------------------------------------------------
+
 @Composable
 fun RotaInicioDoador(
+    token: String,
     usuario: UsuarioAutenticado,
     fotoPerfil: ByteArray?,
     aoSalvarFotoPerfil: suspend (ByteArray, String) -> Unit,
@@ -156,81 +214,77 @@ fun RotaInicioDoador(
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val campanhas = remember {
-        listOf(
-            CampanhaLocal(
-                organizacao = "Amigos dos Animais",
-                titulo = "Ração para 80 animais",
-                detalhe = "Precisamos manter a alimentação dos resgatados neste mês.",
-                simbolo = "🐾",
-                etiqueta = "CAMPANHA URGENTE",
-                progresso = 68,
-                corInicial = Color(0xFF553628),
-                corFinal = Color(0xFFD69D4A),
-            ),
-            CampanhaLocal(
-                organizacao = "Projeto Novo Amanhã",
-                titulo = "Material escolar para 50 crianças",
-                detalhe = "Ajude estudantes da região a começarem o período com o essencial.",
-                simbolo = "📚",
-                etiqueta = "EDUCAÇÃO",
-                progresso = 42,
-                corInicial = Color(0xFF1A5D79),
-                corFinal = Color(0xFF5547A1),
-            ),
-            CampanhaLocal(
-                organizacao = "Casa do Bem",
-                titulo = "50 cestas básicas",
-                detalhe = "Arrecadação para famílias atendidas pela ONG neste mês.",
-                simbolo = "♡",
-                etiqueta = "ALIMENTAÇÃO",
-                progresso = 64,
-                corInicial = Color(0xFF7A3E5B),
-                corFinal = Color(0xFFC87485),
-            ),
-        )
-    }
-    var retorno by remember { mutableStateOf<String?>(null) }
     var areaSelecionada by rememberSaveable { mutableStateOf(AreaDoador.Inicio) }
     var telaPerfil by rememberSaveable { mutableStateOf(TelaPerfil.Principal) }
+    var campanhaSelecionadaId by rememberSaveable { mutableStateOf<String?>(null) }
+    var ongSelecionadaId by rememberSaveable { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = areaSelecionada == AreaDoador.Perfil && telaPerfil != TelaPerfil.Principal) {
-        telaPerfil = TelaPerfil.Principal
+    // Gerenciamento de navegação de volta (Heurística 3: User Control and Freedom)
+    BackHandler(enabled = campanhaSelecionadaId != null || ongSelecionadaId != null || (areaSelecionada == AreaDoador.Perfil && telaPerfil != TelaPerfil.Principal)) {
+        when {
+            campanhaSelecionadaId != null -> campanhaSelecionadaId = null
+            ongSelecionadaId != null -> ongSelecionadaId = null
+            areaSelecionada == AreaDoador.Perfil && telaPerfil != TelaPerfil.Principal -> telaPerfil = TelaPerfil.Principal
+        }
     }
 
-    TelaInicioDoador(
-        usuario = usuario,
-        fotoPerfil = fotoPerfil,
-        campanhas = campanhas,
-        retorno = retorno,
-        areaSelecionada = areaSelecionada,
-        aoAjudar = { campanha ->
-            retorno = "Você escolheu ajudar: ${campanha.titulo}."
-        },
-        aoSelecionarArea = {
-            areaSelecionada = it
-            telaPerfil = TelaPerfil.Principal
-        },
-        aoSalvarFotoPerfil = aoSalvarFotoPerfil,
-        aoRedefinirSenha = aoRedefinirSenha,
-        aoCarregarDadosPessoais = aoCarregarDadosPessoais,
-        aoSalvarDadosPessoais = aoSalvarDadosPessoais,
-        aoCarregarDoacoes = aoCarregarDoacoes,
-        telaPerfil = telaPerfil,
-        aoAlterarTelaPerfil = { telaPerfil = it },
-        aoSair = aoSair,
-        modifier = modifier,
-    )
+    when {
+        campanhaSelecionadaId != null -> {
+            DetalheCampanha(
+                campanhaId = requireNotNull(campanhaSelecionadaId),
+                token = token,
+                aoVoltar = { campanhaSelecionadaId = null },
+                aoAbrirOng = { ongId ->
+                    campanhaSelecionadaId = null
+                    ongSelecionadaId = ongId
+                },
+                modifier = modifier,
+            )
+        }
+        ongSelecionadaId != null -> {
+            PerfilOngPublico(
+                ongId = requireNotNull(ongSelecionadaId),
+                token = token,
+                aoVoltar = { ongSelecionadaId = null },
+                aoAbrirCampanha = { idCamp ->
+                    ongSelecionadaId = null
+                    campanhaSelecionadaId = idCamp
+                },
+                modifier = modifier,
+            )
+        }
+        else -> {
+            TelaInicioDoador(
+                token = token,
+                usuario = usuario,
+                fotoPerfil = fotoPerfil,
+                areaSelecionada = areaSelecionada,
+                aoSelecionarArea = {
+                    areaSelecionada = it
+                    telaPerfil = TelaPerfil.Principal
+                },
+                aoSalvarFotoPerfil = aoSalvarFotoPerfil,
+                aoRedefinirSenha = aoRedefinirSenha,
+                aoCarregarDadosPessoais = aoCarregarDadosPessoais,
+                aoSalvarDadosPessoais = aoSalvarDadosPessoais,
+                aoCarregarDoacoes = aoCarregarDoacoes,
+                telaPerfil = telaPerfil,
+                aoAlterarTelaPerfil = { telaPerfil = it },
+                aoAbrirCampanha = { campanhaSelecionadaId = it },
+                aoAbrirOng = { ongSelecionadaId = it },
+                aoSair = aoSair,
+                modifier = modifier,
+            )
+        }
+    }
 }
 
 @Composable
 private fun TelaInicioDoador(
+    token: String,
     usuario: UsuarioAutenticado,
     fotoPerfil: ByteArray?,
-    campanhas: List<CampanhaLocal>,
-    retorno: String?,
     areaSelecionada: AreaDoador,
-    aoAjudar: (CampanhaLocal) -> Unit,
     aoSelecionarArea: (AreaDoador) -> Unit,
     aoSalvarFotoPerfil: suspend (ByteArray, String) -> Unit,
     aoRedefinirSenha: suspend (String, String, String) -> Unit,
@@ -239,11 +293,14 @@ private fun TelaInicioDoador(
     aoCarregarDoacoes: suspend () -> List<DoacaoUsuario>,
     telaPerfil: TelaPerfil,
     aoAlterarTelaPerfil: (TelaPerfil) -> Unit,
+    aoAbrirCampanha: (String) -> Unit,
+    aoAbrirOng: (String) -> Unit,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (areaSelecionada == AreaDoador.Mapa) {
         TelaMapaDoador(
+            token = token,
             areaSelecionada = areaSelecionada,
             aoSelecionarArea = aoSelecionarArea,
             localizacaoUsuario = usuario.localizacao,
@@ -253,23 +310,21 @@ private fun TelaInicioDoador(
         EstruturaInicioDoador(
             areaSelecionada = areaSelecionada,
             aoSelecionarArea = aoSelecionarArea,
-            aoSair = aoSair,
-            localizacaoUsuario = usuario.localizacao,
-            modifier = modifier,
+            usuario = usuario,
             exibirCabecalho = areaSelecionada != AreaDoador.Perfil || telaPerfil == TelaPerfil.Principal,
             exibirNavegacao = areaSelecionada != AreaDoador.Perfil || telaPerfil == TelaPerfil.Principal,
+            modifier = modifier,
         ) {
             when (areaSelecionada) {
                 AreaDoador.Inicio -> {
-                    Text("Olá, ${usuario.nome}", color = TextoInicio, style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    FeedDoador(campanhas, retorno, aoAjudar)
+                    FeedDoadorComAbas(
+                        token = token,
+                        localizacao = usuario.localizacao,
+                        aoAbrirCampanha = aoAbrirCampanha,
+                        aoAbrirOng = aoAbrirOng,
+                    )
                 }
-                AreaDoador.Carteira -> ConteudoVazio(
-                    simbolo = "▣",
-                    titulo = "Minha carteira",
-                    descricao = "Acompanhe as contribuições e o impacto que você já gerou.",
-                )
+                AreaDoador.Carteira -> CarteiraDoador(token)
                 AreaDoador.Perfil -> when (telaPerfil) {
                     TelaPerfil.Principal -> ConteudoPerfil(
                         usuario = usuario,
@@ -298,130 +353,364 @@ private fun TelaInicioDoador(
                         aoVoltar = { aoAlterarTelaPerfil(TelaPerfil.Principal) },
                     )
                 }
-                AreaDoador.Mapa -> {}
+                AreaDoador.Mapa -> Unit
             }
         }
     }
 }
 
+// -------------------------------------------------------------------------------------------------
+// FEED DOADOR COM ABAS SEGMENTADAS (Campanhas, Materiais, Publicações)
+// -------------------------------------------------------------------------------------------------
+
 @Composable
-private fun FeedDoador(
-    campanhas: List<CampanhaLocal>,
-    retorno: String?,
-    aoAjudar: (CampanhaLocal) -> Unit,
+private fun FeedDoadorComAbas(
+    token: String,
+    localizacao: LocalizacaoUsuario?,
+    aoAbrirCampanha: (String) -> Unit,
+    aoAbrirOng: (String) -> Unit,
 ) {
-    Text("CAMPANHAS PERTO DE VOCÊ", color = RoxoClaroInicio, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.1.sp)
-    Text(
-        text = "Faça a diferença\nperto de você",
-        color = TextoInicio,
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.SemiBold,
-        lineHeight = 34.sp,
-        modifier = Modifier.padding(top = 7.dp),
-    )
-    Text(
-        text = "Conheça as ONGs que estão mobilizando a comunidade.",
-        color = TextoSecundarioInicio,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 8.dp),
-    )
-    campanhas.forEach { campanha ->
-        CartaoCampanhaFeed(campanha, { aoAjudar(campanha) }, Modifier.padding(top = 14.dp))
+    var abaSelecionada by rememberSaveable { mutableIntStateOf(0) }
+    val abas = listOf("Campanhas", "Materiais", "Publicações")
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = FundoSuperficie,
+            border = BorderStroke(1.dp, BordaPadrao),
+        ) {
+            TabRow(
+                selectedTabIndex = abaSelecionada,
+                containerColor = Color.Transparent,
+                contentColor = TextoPrincipal,
+                indicator = { posicoes ->
+                    if (abaSelecionada < posicoes.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(posicoes[abaSelecionada]),
+                            height = 3.dp,
+                            color = RoxoPrincipal,
+                        )
+                    }
+                },
+                divider = { HorizontalDivider(color = DivisorPadrao) },
+            ) {
+                abas.forEachIndexed { indice, titulo ->
+                    Tab(
+                        selected = abaSelecionada == indice,
+                        onClick = { abaSelecionada = indice },
+                        text = {
+                            Text(
+                                text = titulo,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (abaSelecionada == indice) FontWeight.Bold else FontWeight.Medium,
+                                color = if (abaSelecionada == indice) RoxoClaro else TextoSecundario,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        when (abaSelecionada) {
+            0 -> FeedCampanhas(token, localizacao, aoAbrirCampanha)
+            1 -> NecessidadesDoador(token)
+            2 -> FeedSocialDoador(token)
+        }
     }
-    if (retorno != null) {
-        Text(retorno, color = CorSucessoInicio, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
+}
+
+@Composable
+private fun FeedCampanhas(
+    token: String,
+    localizacao: LocalizacaoUsuario?,
+    aoAbrirCampanha: (String) -> Unit,
+) {
+    val repository = remember { DomainRepository() }
+    val scope = rememberCoroutineScope()
+    var campanhas by remember { mutableStateOf<List<Campanha>>(emptyList()) }
+    var cursor by remember { mutableStateOf<String?>(null) }
+    var carregando by remember { mutableStateOf(true) }
+    var carregandoMais by remember { mutableStateOf(false) }
+    var erro by remember { mutableStateOf<String?>(null) }
+    var campanhaParaDoar by remember { mutableStateOf<Campanha?>(null) }
+
+    suspend fun carregar(proximo: String? = null, substituir: Boolean = false) {
+        if (substituir) carregando = true else carregandoMais = true
+        erro = null
+        try {
+            val page = repository.campanhas(localizacao?.cidade, localizacao?.estado, proximo, "ATIVA")
+            campanhas = if (substituir) page.itens else campanhas + page.itens
+            cursor = page.proximaPagina
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
+            erro = failure.message ?: "Não foi possível carregar as campanhas."
+        } finally {
+            carregando = false
+            carregandoMais = false
+        }
+    }
+
+    LaunchedEffect(token, localizacao?.cidade, localizacao?.estado) {
+        campanhas = emptyList()
+        cursor = null
+        carregar(substituir = true)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = "Campanhas ativas",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextoPrincipal,
+                )
+                Text(
+                    text = "Apoie causas com recursos financeiros.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
+                )
+            }
+            if (campanhas.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = RoxoContainer,
+                ) {
+                    Text(
+                        text = "${campanhas.size} ativas",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = RoxoClaro,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        when {
+            carregando -> EstadoCarregando(mensagem = "Buscando campanhas perto de você...")
+            erro != null && campanhas.isEmpty() -> EstadoErro(
+                mensagem = erro.orEmpty(),
+                aoTentarNovamente = { scope.launch { carregar(substituir = true) } },
+            )
+            campanhas.isEmpty() -> EstadoVazio(
+                icone = Icons.Default.Campaign,
+                titulo = "Nenhuma campanha no momento",
+                descricao = "Não há campanhas ativas cadastradas na sua região agora. Fique de olho para novas iniciativas solidárias!",
+            )
+            else -> {
+                campanhas.forEach { campanha ->
+                    CartaoCampanhaFeed(
+                        campanha = campanha,
+                        aoAbrirDetalhes = { aoAbrirCampanha(campanha.id) },
+                        aoAjudar = { campanhaParaDoar = campanha },
+                        modifier = Modifier.padding(bottom = 14.dp),
+                    )
+                }
+
+                if (cursor != null) {
+                    SosBotaoSecundario(
+                        texto = if (carregandoMais) "Carregando mais..." else "Ver mais campanhas",
+                        aoClicar = { scope.launch { carregar(cursor) } },
+                        habilitado = !carregandoMais,
+                        icone = Icons.Default.Refresh,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 12.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    campanhaParaDoar?.let { campanha ->
+        DoacaoSimuladaDialog(
+            token = token,
+            campanha = campanha,
+            aoFechar = { campanhaParaDoar = null },
+            aoConcluir = {
+                campanhaParaDoar = null
+                scope.launch { carregar(substituir = true) }
+            },
+        )
     }
 }
 
 @Composable
 private fun CartaoCampanhaFeed(
-    campanha: CampanhaLocal,
+    campanha: Campanha,
+    aoAbrirDetalhes: () -> Unit,
     aoAjudar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SuperficieInicio),
-        border = BorderStroke(1.dp, BordaInicio),
+    SosCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = aoAbrirDetalhes),
     ) {
         Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .background(Brush.linearGradient(listOf(campanha.corInicial, campanha.corFinal))),
-            ) {
-                Text(
-                    text = campanha.etiqueta,
-                    color = TextoInicio,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(15.dp)
-                        .background(FundoInicio.copy(alpha = 0.35f), RoundedCornerShape(30.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                )
-                Text(campanha.simbolo, fontSize = 48.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 30.dp))
-                Text(
-                    text = campanha.titulo,
-                    color = TextoInicio,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 25.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(0.72f).padding(15.dp),
-                )
-            }
-            Column(modifier = Modifier.padding(15.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(31.dp).background(RoxoInicio.copy(alpha = 0.26f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(campanha.simbolo, fontSize = 15.sp) }
-                    Column(modifier = Modifier.padding(start = 9.dp)) {
-                        Text(campanha.organizacao, color = TextoInicio, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Há pouco tempo · sua cidade", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                Text(
-                    text = campanha.detalhe,
-                    color = TextoSecundarioInicio,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                Row(modifier = Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Meta arrecadada", color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
-                            Text("${campanha.progresso}%", color = RoxoClaroInicio, style = MaterialTheme.typography.labelSmall)
-                        }
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(6.dp)
-                                .background(BordaInicio, RoundedCornerShape(10.dp)),
+            campanha.imagemId?.let { ImagemDoDominio(it) }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(34.dp),
+                            shape = CircleShape,
+                            color = RoxoContainer,
                         ) {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(campanha.progresso / 100f).height(6.dp)
-                                    .background(RoxoClaroInicio, RoundedCornerShape(10.dp)),
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.CorporateFare,
+                                    contentDescription = null,
+                                    tint = RoxoClaro,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = campanha.ongNome,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextoPrincipal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = campanha.categoria.nome,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextoSecundario,
                             )
                         }
                     }
-                    Button(
-                        onClick = aoAjudar,
-                        modifier = Modifier.padding(start = 13.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-                    ) { Text("Ajudar", style = MaterialTheme.typography.labelMedium) }
+
+                    ChipStatus(status = campanha.status)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = campanha.titulo,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextoPrincipal,
+                )
+
+                Text(
+                    text = campanha.descricao,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextoSecundario,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                val progresso = if (campanha.metaCentavos <= 0) 0f
+                else (campanha.arrecadadoCentavos.toFloat() / campanha.metaCentavos.toFloat()).coerceIn(0f, 1f)
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(FundoCampo, RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = "Arrecadado",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextoSecundario,
+                        )
+                        Text(
+                            text = "${(progresso * 100).toInt()}% da meta",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = RoxoClaro,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    LinearProgressIndicator(
+                        progress = { progresso },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = RoxoPrincipal,
+                        trackColor = BordaPadrao,
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = Formatadores.moeda(campanha.arrecadadoCentavos),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextoPrincipal,
+                        )
+                        Text(
+                            text = "Meta: ${Formatadores.moeda(campanha.metaCentavos)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextoSecundario,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SosBotaoSecundario(
+                        texto = "Detalhes",
+                        aoClicar = aoAbrirDetalhes,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (campanha.status == "ATIVA") {
+                        SosBotaoPrimario(
+                            texto = "Apoiar",
+                            aoClicar = aoAjudar,
+                            icone = Icons.Default.Favorite,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
     }
 }
-@Composable
-private fun ConteudoMapa() {
-    TituloAreaDoador("ONGs no mapa", "Explore instituições próximas de você.")
-    MapaAberto()
-}
+
+// -------------------------------------------------------------------------------------------------
+// PERFIL DO DOADOR E SUB-TELAS
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 private fun ConteudoPerfil(
@@ -438,15 +727,15 @@ private fun ConteudoPerfil(
     val scope = rememberCoroutineScope()
     var salvandoFoto by remember { mutableStateOf(false) }
     var retorno by remember { mutableStateOf<RetornoPerfil?>(null) }
-    var opcaoAberta by remember { mutableStateOf<OpcaoPerfil?>(null) }
+    var confirmarSaida by remember { mutableStateOf(false) }
+
     val bitmap by produceState<Bitmap?>(initialValue = null, fotoPerfil) {
         value = withContext(Dispatchers.Default) {
             fotoPerfil?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
         }
     }
     val iniciais = remember(usuario.nome) {
-        usuario.nome.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("")
-            .ifBlank { "?" }
+        usuario.nome.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("").ifBlank { "?" }
     }
 
     val selecionarFoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -469,55 +758,52 @@ private fun ConteudoPerfil(
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = SuperficieInicio,
-        shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
+    SosCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
+            modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Surface(
                     modifier = Modifier
-                        .size(104.dp)
+                        .size(96.dp)
                         .clickable(enabled = !salvandoFoto) {
                             selecionarFoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
                     shape = CircleShape,
-                    color = RoxoInicio.copy(alpha = 0.24f),
-                    border = BorderStroke(2.dp, RoxoClaroInicio.copy(alpha = 0.8f)),
+                    color = RoxoContainer,
+                    border = BorderStroke(2.dp, RoxoClaro),
                 ) {
                     if (bitmap != null) {
                         Image(
                             bitmap = requireNotNull(bitmap).asImageBitmap(),
                             contentDescription = "Foto de perfil de ${usuario.nome}",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
                             contentScale = ContentScale.Crop,
                         )
                     } else {
                         Box(
-                            modifier = Modifier.fillMaxSize().background(
-                                Brush.linearGradient(listOf(RoxoInicio, Color(0xFF4B4FA0))),
-                            ),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Brush.linearGradient(listOf(RoxoPrincipal, Color(0xFF4B4FA0)))),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(iniciais, color = TextoInicio, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                            Text(iniciais, color = TextoPrincipal, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
                 if (salvandoFoto) {
                     Surface(
-                        modifier = Modifier.size(104.dp),
+                        modifier = Modifier.size(96.dp),
                         shape = CircleShape,
-                        color = FundoInicio.copy(alpha = 0.72f),
+                        color = FundoApp.copy(alpha = 0.72f),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(28.dp),
-                                color = RoxoClaroInicio,
+                                color = RoxoClaro,
                                 strokeWidth = 3.dp,
                             )
                         }
@@ -527,161 +813,169 @@ private fun ConteudoPerfil(
 
             Text(
                 text = usuario.nome,
-                color = TextoInicio,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                color = TextoPrincipal,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 14.dp),
             )
             Text(
                 text = usuario.email,
-                color = TextoSecundarioInicio,
                 style = MaterialTheme.typography.bodyMedium,
+                color = TextoSecundario,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 3.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
+
             Surface(
-                color = CorSucessoInicio.copy(alpha = 0.12f),
+                color = CorSucesso.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier.padding(top = 8.dp),
             ) {
                 Text(
-                    text = "Conta de doador",
-                    color = CorSucessoInicio,
-                    fontSize = 11.5.sp,
+                    text = "Doador Solidário",
+                    color = CorSucesso,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
             }
-            OutlinedButton(
-                onClick = {
+
+            SosBotaoSecundario(
+                texto = if (fotoPerfil == null) "Adicionar foto de perfil" else "Alterar foto",
+                aoClicar = {
                     selecionarFoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
-                enabled = !salvandoFoto,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, RoxoClaroInicio.copy(alpha = 0.7f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = RoxoClaroInicio),
+                habilitado = !salvandoFoto,
                 modifier = Modifier.padding(top = 14.dp),
-            ) {
-                Text(if (fotoPerfil == null) "Adicionar foto" else "Alterar foto")
-            }
-            Text(
-                "A imagem é otimizada antes do envio para evitar lentidão.",
-                color = TextoSecundarioInicio,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 7.dp),
             )
+
             retorno?.let { estado ->
-                Text(
-                    text = estado.mensagem,
-                    color = if (estado.sucesso) CorSucessoInicio else Color(0xFFFF8E9B),
-                    fontSize = 12.sp,
+                BannerAlerta(
+                    mensagem = estado.mensagem,
+                    tipo = if (estado.sucesso) TipoAlerta.Sucesso else TipoAlerta.Erro,
                     modifier = Modifier.padding(top = 10.dp),
                 )
             }
         }
     }
 
+    Spacer(modifier = Modifier.height(20.dp))
+
     Text(
-        "CONTA E PREFERÊNCIAS",
-        color = RoxoClaroInicio,
+        text = "CONTA E PREFERÊNCIAS",
         style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = RoxoClaro,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 24.dp, bottom = 10.dp),
     )
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = SuperficieInicio,
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    SosCard(modifier = Modifier.fillMaxWidth()) {
         Column {
             OpcaoPerfil.entries.forEachIndexed { indice, opcao ->
-                AcaoPerfil(
-                    opcao = opcao,
-                    onClick = {
-                        when (opcao) {
-                            OpcaoPerfil.MinhasDoacoes -> aoAbrirMinhasDoacoes()
-                            OpcaoPerfil.Pagamentos -> aoAbrirCarteira()
-                            OpcaoPerfil.Informacoes -> aoAbrirInformacoes()
-                            OpcaoPerfil.Senha -> aoAbrirRedefinicaoSenha()
-                            else -> opcaoAberta = opcao
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            when (opcao) {
+                                OpcaoPerfil.MinhasDoacoes -> aoAbrirMinhasDoacoes()
+                                OpcaoPerfil.Informacoes -> aoAbrirInformacoes()
+                                OpcaoPerfil.Pagamentos -> aoAbrirCarteira()
+                                OpcaoPerfil.Senha -> aoAbrirRedefinicaoSenha()
+                            }
                         }
-                    },
-                )
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        modifier = Modifier.size(40.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = RoxoContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = opcao.icone,
+                                contentDescription = null,
+                                tint = RoxoClaro,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 14.dp),
+                    ) {
+                        Text(
+                            text = opcao.titulo,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextoPrincipal,
+                        )
+                        Text(
+                            text = opcao.descricao,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextoSecundario,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Abrir",
+                        tint = TextoSecundario,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+
                 if (indice < OpcaoPerfil.entries.lastIndex) {
-                    HorizontalDivider(color = BordaInicio.copy(alpha = 0.65f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = DivisorPadrao, modifier = Modifier.padding(horizontal = 16.dp))
                 }
             }
         }
     }
 
+    Spacer(modifier = Modifier.height(20.dp))
+
     OutlinedButton(
-        onClick = aoSair,
-        modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(52.dp),
+        onClick = { confirmarSaida = true },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color(0xFFFF8E9B).copy(alpha = 0.55f)),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF8E9B)),
+        border = BorderStroke(1.dp, CoralAcento.copy(alpha = 0.6f)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralAcento),
     ) {
-        Text("Sair da conta", fontWeight = FontWeight.SemiBold)
+        Icon(imageVector = Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Encerrar sessão", fontWeight = FontWeight.SemiBold)
     }
 
-    opcaoAberta?.let { opcao ->
-        DialogoOpcaoPerfil(usuario, opcao, onDismiss = { opcaoAberta = null })
+    if (confirmarSaida) {
+        DialogoConfirmacao(
+            titulo = "Sair da conta",
+            mensagem = "Tem certeza de que deseja encerrar sua sessão no SOS+? Você precisará fazer login novamente para doar ou ver seu histórico.",
+            textoConfirmar = "Sair",
+            textoCancelar = "Continuar conectado",
+            perigoso = true,
+            aoConfirmar = {
+                confirmarSaida = false
+                aoSair()
+            },
+            aoCancelar = { confirmarSaida = false },
+        )
     }
 }
 
-@Composable
-private fun AcaoPerfil(opcao: OpcaoPerfil, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier.size(42.dp).background(RoxoInicio.copy(alpha = 0.2f), RoundedCornerShape(13.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(opcao.simbolo, color = RoxoClaroInicio, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(opcao.titulo, color = TextoInicio, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text(
-                opcao.descricao,
-                color = TextoSecundarioInicio,
-                fontSize = 11.5.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Text("›", color = TextoSecundarioInicio, fontSize = 22.sp)
-    }
-}
-
-@Composable
-private fun DialogoOpcaoPerfil(usuario: UsuarioAutenticado, opcao: OpcaoPerfil, onDismiss: () -> Unit) {
-    val descricao = when (opcao) {
-        OpcaoPerfil.ConfigurarPerfil -> "Sua foto pode ser alterada diretamente no cartão do perfil. Nome e e-mail estão vinculados à conta autenticada."
-        OpcaoPerfil.Informacoes -> buildString {
-            append("Nome: ${usuario.nome}\n")
-            append("E-mail: ${usuario.email}")
-            usuario.localizacao?.let { append("\nLocalização: ${it.descricao}") }
-        }
-        else -> "Esta configuração estará disponível nesta área."
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SuperficieInicio,
-        shape = RoundedCornerShape(22.dp),
-        title = { Text(opcao.titulo, color = TextoInicio, fontWeight = FontWeight.Bold) },
-        text = { Text(descricao, color = TextoSecundarioInicio, lineHeight = 21.sp) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Entendi", color = RoxoClaroInicio) }
-        },
-    )
-}
+// -------------------------------------------------------------------------------------------------
+// TELA REDEFINIR SENHA PERFIL
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 private fun TelaRedefinirSenhaPerfil(
@@ -693,83 +987,113 @@ private fun TelaRedefinirSenhaPerfil(
     var senhaAtual by remember { mutableStateOf("") }
     var novaSenha by remember { mutableStateOf("") }
     var confirmacao by remember { mutableStateOf("") }
-    var senhaAtualVisivel by rememberSaveable { mutableStateOf(false) }
-    var novaSenhaVisivel by rememberSaveable { mutableStateOf(false) }
-    var confirmacaoVisivel by rememberSaveable { mutableStateOf(false) }
     var salvando by remember { mutableStateOf(false) }
     var retorno by remember { mutableStateOf<RetornoPerfil?>(null) }
 
-    CabecalhoTelaPerfil("Redefinir senha", aoVoltar)
-    Text(
-        "Confirme sua identidade e crie uma senha nova com pelo menos 8 caracteres.",
-        color = TextoSecundarioInicio,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
-    )
-    OutlinedTextField(
-        value = email,
-        onValueChange = {},
-        readOnly = true,
-        singleLine = true,
-        label = { Text("E-mail da conta") },
-        colors = coresCampoPerfil(),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoSenhaPerfil("Senha atual", senhaAtual, { senhaAtual = it; retorno = null }, !salvando, senhaAtualVisivel) {
-        senhaAtualVisivel = !senhaAtualVisivel
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoSenhaPerfil("Nova senha", novaSenha, { novaSenha = it; retorno = null }, !salvando, novaSenhaVisivel) {
-        novaSenhaVisivel = !novaSenhaVisivel
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoSenhaPerfil("Confirmar nova senha", confirmacao, { confirmacao = it; retorno = null }, !salvando, confirmacaoVisivel) {
-        confirmacaoVisivel = !confirmacaoVisivel
-    }
-    retorno?.let { estado ->
-        MensagemPerfil(estado, Modifier.padding(top = 14.dp))
-    }
-    Button(
-        onClick = {
-            val erroLocal = when {
-                senhaAtual.isBlank() -> "Informe sua senha atual."
-                novaSenha.length < 8 -> "A nova senha deve ter pelo menos 8 caracteres."
-                novaSenha != confirmacao -> "A confirmação da nova senha não confere."
-                novaSenha == senhaAtual -> "A nova senha deve ser diferente da atual."
-                else -> null
+    CabecalhoTelaPerfil(titulo = "Redefinir Senha", aoVoltar = aoVoltar)
+
+    SosCard(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                text = "Atualização de Credencial",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextoPrincipal,
+            )
+            Text(
+                text = "Confirme sua senha atual e escolha uma nova senha forte com pelo menos 8 caracteres.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextoSecundario,
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+            )
+
+            SosCampoTexto(
+                valor = email,
+                aoMudarValor = {},
+                rotulo = "E-mail cadastrado",
+                habilitado = false,
+                icone = Icons.Default.Person,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoSenha(
+                valor = senhaAtual,
+                aoMudarValor = { senhaAtual = it; retorno = null },
+                rotulo = "Senha atual",
+                habilitado = !salvando,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoSenha(
+                valor = novaSenha,
+                aoMudarValor = { novaSenha = it; retorno = null },
+                rotulo = "Nova senha (mínimo 8 caracteres)",
+                habilitado = !salvando,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoSenha(
+                valor = confirmacao,
+                aoMudarValor = { confirmacao = it; retorno = null },
+                rotulo = "Confirmar nova senha",
+                habilitado = !salvando,
+            )
+
+            retorno?.let { estado ->
+                BannerAlerta(
+                    mensagem = estado.mensagem,
+                    tipo = if (estado.sucesso) TipoAlerta.Sucesso else TipoAlerta.Erro,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
             }
-            if (erroLocal != null) {
-                retorno = RetornoPerfil(erroLocal, false)
-            } else {
-                salvando = true
-                retorno = null
-                scope.launch {
-                    try {
-                        aoRedefinirSenha(senhaAtual, novaSenha, confirmacao)
-                        senhaAtual = ""
-                        novaSenha = ""
-                        confirmacao = ""
-                        retorno = RetornoPerfil("Senha atualizada com segurança.", true)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: IOException) {
-                        retorno = RetornoPerfil(error.message ?: "Não foi possível atualizar a senha.", false)
-                    } finally {
-                        salvando = false
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SosBotaoPrimario(
+                texto = "Atualizar senha",
+                aoClicar = {
+                    val erroLocal = when {
+                        senhaAtual.isBlank() -> "Informe sua senha atual."
+                        novaSenha.length < 8 -> "A nova senha deve ter pelo menos 8 caracteres."
+                        novaSenha != confirmacao -> "A confirmação da nova senha não confere."
+                        novaSenha == senhaAtual -> "A nova senha deve ser diferente da atual."
+                        else -> null
                     }
-                }
-            }
-        },
-        enabled = !salvando,
-        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(54.dp),
-    ) {
-        if (salvando) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextoInicio, strokeWidth = 2.dp)
-        else Text("Atualizar senha", fontWeight = FontWeight.SemiBold)
+                    if (erroLocal != null) {
+                        retorno = RetornoPerfil(erroLocal, false)
+                    } else {
+                        salvando = true
+                        retorno = null
+                        scope.launch {
+                            try {
+                                aoRedefinirSenha(senhaAtual, novaSenha, confirmacao)
+                                senhaAtual = ""
+                                novaSenha = ""
+                                confirmacao = ""
+                                retorno = RetornoPerfil("Senha atualizada com sucesso!", true)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: IOException) {
+                                retorno = RetornoPerfil(error.message ?: "Não foi possível atualizar a senha.", false)
+                            } finally {
+                                salvando = false
+                            }
+                        }
+                    }
+                },
+                carregando = salvando,
+                habilitado = !salvando,
+            )
+        }
     }
 }
+
+// -------------------------------------------------------------------------------------------------
+// TELA INFORMAÇÕES PESSOAIS
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 private fun TelaInformacoesPessoais(
@@ -780,7 +1104,6 @@ private fun TelaInformacoesPessoais(
     aoVoltar: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    // Estes valores são recarregados da API a cada entrada nesta tela.
     var nome by remember { mutableStateOf("") }
     var sobrenome by remember { mutableStateOf("") }
     var cpf by remember { mutableStateOf("") }
@@ -797,12 +1120,12 @@ private fun TelaInformacoesPessoais(
     fun preencher(dados: DadosPessoaisUsuario) {
         nome = dados.nome
         sobrenome = dados.sobrenome.orEmpty()
-        cpf = dados.cpf.orEmpty()
+        cpf = Formatadores.formatarCpf(dados.cpf.orEmpty())
         dataNascimento = dataApiParaTela(dados.dataNascimento)
         endereco = dados.endereco.orEmpty()
         tipoSanguineo = dados.tipoSanguineo
         genero = dados.genero
-        telefone = dados.telefone.orEmpty()
+        telefone = Formatadores.formatarTelefone(dados.telefone.orEmpty())
     }
 
     LaunchedEffect(tentativa) {
@@ -819,103 +1142,192 @@ private fun TelaInformacoesPessoais(
         }
     }
 
-    CabecalhoTelaPerfil("Informações pessoais", aoVoltar)
-    CabecalhoUsuarioCompacto(usuario.nome, fotoPerfil, Modifier.padding(top = 14.dp, bottom = 18.dp))
+    CabecalhoTelaPerfil(titulo = "Informações Pessoais", aoVoltar = aoVoltar)
 
     if (carregando) {
-        Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = RoxoClaroInicio)
-        }
-        return
-    }
-    if (retorno?.sucesso == false && nome.isBlank()) {
-        MensagemPerfil(requireNotNull(retorno), Modifier.padding(top = 12.dp))
-        OutlinedButton(onClick = { tentativa++ }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
-            Text("Tentar novamente")
-        }
+        EstadoCarregando(mensagem = "Carregando suas informações...")
         return
     }
 
-    Text(
-        "Você pode deixar os campos opcionais em branco. O tipo sanguíneo é dado de saúde e também fica protegido no armazenamento.",
-        color = TextoSecundarioInicio,
-        fontSize = 12.sp,
-        lineHeight = 18.sp,
-        modifier = Modifier.fillMaxWidth().background(RoxoInicio.copy(alpha = 0.12f), RoundedCornerShape(14.dp)).padding(14.dp),
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-    CampoTextoPerfil("Nome", nome, { nome = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Words, !salvando)
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoTextoPerfil("Sobrenome", sobrenome, { sobrenome = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Words, !salvando)
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoTextoPerfil("CPF", cpf, { cpf = it.take(14); retorno = null }, KeyboardType.Number, habilitado = !salvando)
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoTextoPerfil("Data de nascimento", dataNascimento, { dataNascimento = it.take(10); retorno = null }, KeyboardType.Number, habilitado = !salvando, placeholder = "DD/MM/AAAA")
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoTextoPerfil("Telefone com DDD", telefone, { telefone = it.take(20); retorno = null }, KeyboardType.Phone, habilitado = !salvando)
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoTextoPerfil("Endereço", endereco, { endereco = it; retorno = null }, KeyboardType.Text, KeyboardCapitalization.Sentences, !salvando, singleLine = false)
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoSelecaoPerfil(
-        rotulo = "Tipo sanguíneo",
-        valor = tipoSanguineo,
-        opcoes = listOf(null to "Não informar", "A+" to "A+", "A-" to "A-", "B+" to "B+", "B-" to "B-", "AB+" to "AB+", "AB-" to "AB-", "O+" to "O+", "O-" to "O-"),
-        habilitado = !salvando,
-        aoSelecionar = { tipoSanguineo = it; retorno = null },
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    CampoSelecaoPerfil(
-        rotulo = "Gênero",
-        valor = genero,
-        opcoes = listOf(null to "Não informar", "MASCULINO" to "Masculino", "FEMININO" to "Feminino", "OUTROS" to "Outros", "PREFIRO_NAO_INFORMAR" to "Prefiro não informar"),
-        habilitado = !salvando,
-        aoSelecionar = { genero = it; retorno = null },
-    )
-    retorno?.let { MensagemPerfil(it, Modifier.padding(top = 14.dp)) }
-    Button(
-        onClick = {
-            val dataApi = dataTelaParaApi(dataNascimento)
-            val erroLocal = when {
-                nome.isBlank() -> "Informe seu nome."
-                dataNascimento.isNotBlank() && dataApi == null -> "Informe a data no formato DD/MM/AAAA."
-                else -> null
-            }
-            if (erroLocal != null) {
-                retorno = RetornoPerfil(erroLocal, false)
-            } else {
-                salvando = true
-                retorno = null
-                scope.launch {
-                    try {
-                        val atualizados = aoSalvar(DadosPessoaisUsuario(
-                            nome = nome.trim(),
-                            sobrenome = sobrenome.trim().ifBlank { null },
-                            cpf = cpf.trim().ifBlank { null },
-                            dataNascimento = dataApi,
-                            endereco = endereco.trim().ifBlank { null },
-                            tipoSanguineo = tipoSanguineo,
-                            genero = genero,
-                            telefone = telefone.trim().ifBlank { null },
-                        ))
-                        preencher(atualizados)
-                        retorno = RetornoPerfil("Informações atualizadas.", true)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: IOException) {
-                        retorno = RetornoPerfil(error.message ?: "Não foi possível salvar seus dados.", false)
-                    } finally {
-                        salvando = false
+    if (retorno?.sucesso == false && nome.isBlank()) {
+        EstadoErro(
+            mensagem = retorno?.mensagem ?: "Falha ao carregar perfil.",
+            aoTentarNovamente = { tentativa++ },
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        return
+    }
+
+    SosCard(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            BannerAlerta(
+                mensagem = "Campos opcionais podem ser deixados em branco. Tipo sanguíneo e dados de saúde ficam protegidos no armazenamento seguro.",
+                tipo = TipoAlerta.Informativo,
+                modifier = Modifier.padding(bottom = 16.dp),
+            )
+
+            SosCampoTexto(
+                valor = nome,
+                aoMudarValor = { nome = it; retorno = null },
+                rotulo = "Nome *",
+                habilitado = !salvando,
+                capitalizacao = KeyboardCapitalization.Words,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoTexto(
+                valor = sobrenome,
+                aoMudarValor = { sobrenome = it; retorno = null },
+                rotulo = "Sobrenome",
+                habilitado = !salvando,
+                capitalizacao = KeyboardCapitalization.Words,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoTexto(
+                valor = cpf,
+                aoMudarValor = {
+                    cpf = Formatadores.formatarCpf(it.filter { c -> c.isDigit() })
+                    retorno = null
+                },
+                rotulo = "CPF",
+                habilitado = !salvando,
+                tipoTeclado = KeyboardType.Number,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoTexto(
+                valor = dataNascimento,
+                aoMudarValor = {
+                    val digitos = it.filter { c -> c.isDigit() }.take(8)
+                    dataNascimento = when {
+                        digitos.length <= 2 -> digitos
+                        digitos.length <= 4 -> "${digitos.take(2)}/${digitos.substring(2)}"
+                        else -> "${digitos.take(2)}/${digitos.substring(2, 4)}/${digitos.substring(4)}"
                     }
-                }
+                    retorno = null
+                },
+                rotulo = "Data de nascimento (DD/MM/AAAA)",
+                habilitado = !salvando,
+                tipoTeclado = KeyboardType.Number,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoTexto(
+                valor = telefone,
+                aoMudarValor = {
+                    telefone = Formatadores.formatarTelefone(it.filter { c -> c.isDigit() })
+                    retorno = null
+                },
+                rotulo = "Telefone com DDD",
+                habilitado = !salvando,
+                tipoTeclado = KeyboardType.Phone,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SosCampoTexto(
+                valor = endereco,
+                aoMudarValor = { endereco = it; retorno = null },
+                rotulo = "Endereço completo",
+                habilitado = !salvando,
+                umaLinha = false,
+                linhasMinimas = 2,
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            CampoSelecaoPerfil(
+                rotulo = "Tipo sanguíneo",
+                valor = tipoSanguineo,
+                opcoes = listOf(
+                    null to "Não informar",
+                    "A+" to "A+", "A-" to "A-",
+                    "B+" to "B+", "B-" to "B-",
+                    "AB+" to "AB+", "AB-" to "AB-",
+                    "O+" to "O+", "O-" to "O-",
+                ),
+                habilitado = !salvando,
+                aoSelecionar = { tipoSanguineo = it; retorno = null },
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            CampoSelecaoPerfil(
+                rotulo = "Gênero",
+                valor = genero,
+                opcoes = listOf(
+                    null to "Não informar",
+                    "MASCULINO" to "Masculino",
+                    "FEMININO" to "Feminino",
+                    "OUTROS" to "Outros",
+                    "PREFIRO_NAO_INFORMAR" to "Prefiro não informar",
+                ),
+                habilitado = !salvando,
+                aoSelecionar = { genero = it; retorno = null },
+            )
+
+            retorno?.let {
+                BannerAlerta(
+                    mensagem = it.mensagem,
+                    tipo = if (it.sucesso) TipoAlerta.Sucesso else TipoAlerta.Erro,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
             }
-        },
-        enabled = !salvando,
-        colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(54.dp),
-    ) {
-        if (salvando) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextoInicio, strokeWidth = 2.dp)
-        else Text("Salvar alterações", fontWeight = FontWeight.SemiBold)
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SosBotaoPrimario(
+                texto = "Salvar alterações",
+                aoClicar = {
+                    val dataApi = dataTelaParaApi(dataNascimento)
+                    val erroLocal = when {
+                        nome.isBlank() -> "Informe seu nome."
+                        nome.trim().length + sobrenome.trim().let { if (it.isEmpty()) 0 else it.length + 1 } > 150 ->
+                            "Nome e sobrenome devem ter até 150 caracteres juntos."
+                        dataNascimento.isNotBlank() && dataApi == null ->
+                            "Informe a data no formato DD/MM/AAAA."
+                        else -> null
+                    }
+                    if (erroLocal != null) {
+                        retorno = RetornoPerfil(erroLocal, false)
+                    } else {
+                        salvando = true
+                        retorno = null
+                        scope.launch {
+                            try {
+                                val atualizados = aoSalvar(
+                                    DadosPessoaisUsuario(
+                                        nome = nome.trim(),
+                                        sobrenome = sobrenome.trim().ifBlank { null },
+                                        cpf = cpf.filter { it.isDigit() }.ifBlank { null },
+                                        dataNascimento = dataApi,
+                                        endereco = endereco.trim().ifBlank { null },
+                                        tipoSanguineo = tipoSanguineo,
+                                        genero = genero,
+                                        telefone = telefone.filter { it.isDigit() }.ifBlank { null },
+                                    ),
+                                )
+                                preencher(atualizados)
+                                retorno = RetornoPerfil("Informações salvas com sucesso!", true)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: IOException) {
+                                retorno = RetornoPerfil(error.message ?: "Não foi possível salvar os dados.", false)
+                            } finally {
+                                salvando = false
+                            }
+                        }
+                    }
+                },
+                carregando = salvando,
+                habilitado = !salvando,
+            )
+        }
     }
 }
 
@@ -952,7 +1364,11 @@ private fun TelaMinhasDoacoes(
     val lista = doacoes
     when {
         erro != null -> {
-            MensagemPerfil(RetornoPerfil(requireNotNull(erro), false))
+            BannerAlerta(
+                mensagem = requireNotNull(erro),
+                tipo = TipoAlerta.Erro,
+                modifier = Modifier.padding(top = 8.dp),
+            )
             OutlinedButton(onClick = { tentativa++ }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
                 Text("Tentar novamente")
             }
@@ -1104,59 +1520,16 @@ private fun EtiquetaDoacao(texto: String, cor: Color) {
     }
 }
 
+
+// -------------------------------------------------------------------------------------------------
+// COMPONENTES AUXILIARES DE FORMULÁRIO DO PERFIL
+// -------------------------------------------------------------------------------------------------
+
 @Composable
 private fun CabecalhoTelaPerfil(titulo: String, aoVoltar: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = aoVoltar, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp)) {
-            Text("‹ Voltar", color = RoxoClaroInicio, fontWeight = FontWeight.SemiBold)
-        }
-        Text(titulo, color = TextoInicio, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
-    }
-}
-
-@Composable
-private fun CabecalhoUsuarioCompacto(nome: String, fotoPerfil: ByteArray?, modifier: Modifier = Modifier) {
-    val bitmap by produceState<Bitmap?>(initialValue = null, fotoPerfil) {
-        value = withContext(Dispatchers.Default) { fotoPerfil?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
-    }
-    val iniciais = remember(nome) { nome.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("").ifBlank { "?" } }
-    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Surface(modifier = Modifier.size(52.dp), shape = CircleShape, color = RoxoInicio.copy(alpha = 0.25f)) {
-            if (bitmap != null) {
-                Image(requireNotNull(bitmap).asImageBitmap(), "Foto de perfil", Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
-            } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(iniciais, color = TextoInicio, fontWeight = FontWeight.Bold) }
-            }
-        }
-        Column(modifier = Modifier.padding(start = 12.dp)) {
-            Text(nome, color = TextoInicio, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Cadastro pessoal", color = TextoSecundarioInicio, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun CampoTextoPerfil(
-    rotulo: String,
-    valor: String,
-    aoAlterar: (String) -> Unit,
-    tipoTeclado: KeyboardType,
-    capitalizacao: KeyboardCapitalization = KeyboardCapitalization.None,
-    habilitado: Boolean,
-    placeholder: String? = null,
-    singleLine: Boolean = true,
-) {
-    OutlinedTextField(
-        value = valor,
-        onValueChange = aoAlterar,
-        label = { Text(rotulo) },
-        placeholder = placeholder?.let { { Text(it) } },
-        enabled = habilitado,
-        singleLine = singleLine,
-        minLines = if (singleLine) 1 else 2,
-        keyboardOptions = KeyboardOptions(keyboardType = tipoTeclado, capitalization = capitalizacao),
-        colors = coresCampoPerfil(),
-        modifier = Modifier.fillMaxWidth(),
+    SosTopBar(
+        titulo = titulo,
+        aoVoltar = aoVoltar,
     )
 }
 
@@ -1170,44 +1543,65 @@ private fun CampoSelecaoPerfil(
 ) {
     var aberto by remember { mutableStateOf(false) }
     val texto = opcoes.firstOrNull { it.first == valor }?.second ?: "Não informar"
+
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
-            modifier = Modifier.fillMaxWidth().clickable(enabled = habilitado) { aberto = true },
-            color = Color.Transparent,
-            shape = RoundedCornerShape(4.dp),
-            border = BorderStroke(1.dp, if (aberto) RoxoClaroInicio else BordaInicio),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = habilitado) { aberto = true },
+            color = FundoCampo,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, if (aberto) RoxoClaro else BordaPadrao),
         ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text(rotulo, color = if (aberto) RoxoClaroInicio else TextoSecundarioInicio, fontSize = 11.sp)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(texto, color = TextoInicio, style = MaterialTheme.typography.bodyLarge)
-                    Text("⌄", color = TextoSecundarioInicio)
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    text = rotulo,
+                    color = if (aberto) RoxoClaro else TextoSecundario,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = texto,
+                        color = TextoPrincipal,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Selecionar",
+                        tint = TextoSecundario,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
             }
         }
-        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }, modifier = Modifier.background(SuperficieInicio)) {
+        DropdownMenu(
+            expanded = aberto,
+            onDismissRequest = { aberto = false },
+            modifier = Modifier.background(FundoSuperficieElevada),
+        ) {
             opcoes.forEach { (chave, descricao) ->
                 DropdownMenuItem(
-                    text = { Text(descricao, color = TextoInicio) },
-                    onClick = { aoSelecionar(chave); aberto = false },
+                    text = {
+                        Text(
+                            text = descricao,
+                            color = if (chave == valor) RoxoClaro else TextoPrincipal,
+                            fontWeight = if (chave == valor) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    onClick = {
+                        aoSelecionar(chave)
+                        aberto = false
+                    },
                 )
             }
         }
     }
-}
-
-@Composable
-private fun MensagemPerfil(retorno: RetornoPerfil, modifier: Modifier = Modifier) {
-    Text(
-        retorno.mensagem,
-        color = if (retorno.sucesso) CorSucessoInicio else Color(0xFFFF8E9B),
-        fontSize = 12.sp,
-        lineHeight = 18.sp,
-        modifier = modifier.fillMaxWidth().background(
-            (if (retorno.sucesso) CorSucessoInicio else Color(0xFFFF8E9B)).copy(alpha = 0.1f),
-            RoundedCornerShape(12.dp),
-        ).padding(12.dp),
-    )
 }
 
 private fun dataApiParaTela(value: String?): String = value?.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
@@ -1219,87 +1613,32 @@ private fun dataTelaParaApi(value: String): String? {
     return "${match.groupValues[3]}-${match.groupValues[2]}-${match.groupValues[1]}"
 }
 
-@Composable
-private fun CampoSenhaPerfil(
-    rotulo: String,
-    valor: String,
-    aoAlterar: (String) -> Unit,
-    habilitado: Boolean,
-    visivel: Boolean,
-    aoAlternarVisibilidade: () -> Unit,
-) {
-    OutlinedTextField(
-        value = valor,
-        onValueChange = aoAlterar,
-        label = { Text(rotulo) },
-        enabled = habilitado,
-        singleLine = true,
-        visualTransformation = if (visivel) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        trailingIcon = {
-            TextButton(onClick = aoAlternarVisibilidade, enabled = habilitado) {
-                Text(if (visivel) "Ocultar" else "Mostrar", color = RoxoClaroInicio, fontSize = 11.sp)
-            }
-        },
-        colors = coresCampoPerfil(),
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
-@Composable
-private fun coresCampoPerfil() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = TextoInicio,
-    unfocusedTextColor = TextoInicio,
-    focusedBorderColor = RoxoClaroInicio,
-    unfocusedBorderColor = BordaInicio,
-    focusedLabelColor = RoxoClaroInicio,
-    unfocusedLabelColor = TextoSecundarioInicio,
-    cursorColor = RoxoClaroInicio,
-)
-
-@Composable
-private fun ConteudoVazio(simbolo: String, titulo: String, descricao: String) {
-    TituloAreaDoador(titulo, descricao)
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(top = 22.dp),
-        color = SuperficieInicio,
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(28.dp)) {
-            Text(simbolo, color = RoxoClaroInicio, fontSize = 39.sp)
-            Text("Em breve", color = TextoInicio, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
-            Text("Este espaço será preenchido conforme você usar o SOS+.", color = TextoSecundarioInicio, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 7.dp))
-        }
-    }
-}
-
-@Composable
-private fun TituloAreaDoador(titulo: String, descricao: String) {
-    Text(titulo, color = TextoInicio, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-    Text(descricao, color = TextoSecundarioInicio, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
-}
+// -------------------------------------------------------------------------------------------------
+// ESTRUTURA GERAL COM TOPBAR E BOTTOMBAR DO DOADOR
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 private fun EstruturaInicioDoador(
     areaSelecionada: AreaDoador,
     aoSelecionarArea: (AreaDoador) -> Unit,
-    aoSair: () -> Unit,
-    localizacaoUsuario: br.com.sosplus.data.LocalizacaoUsuario?,
+    usuario: UsuarioAutenticado,
     modifier: Modifier = Modifier,
     exibirCabecalho: Boolean = true,
     exibirNavegacao: Boolean = true,
-    conteudo: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+    conteudo: @Composable () -> Unit,
 ) {
     Box(
-        modifier = modifier.fillMaxSize().background(
-            Brush.radialGradient(colors = listOf(RoxoInicio.copy(alpha = 0.19f), FundoInicio), radius = 900f),
-        ),
+        modifier = modifier
+            .fillMaxSize()
+            .background(FundoApp),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 20.dp)
-                .padding(bottom = if (exibirNavegacao) 104.dp else 20.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(bottom = if (exibirNavegacao) 96.dp else 16.dp),
         ) {
             if (exibirCabecalho) {
                 Row(
@@ -1308,24 +1647,62 @@ private fun EstruturaInicioDoador(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     LogoInicio()
-                    Text(
-                        text = localizacaoUsuario?.descricao ?: "Sua região",
-                        color = TextoSecundarioInicio,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 16.dp),
-                    )
+
+                    Surface(
+                        color = RoxoContainer,
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, RoxoPrincipal.copy(alpha = 0.3f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = RoxoClaro,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = usuario.localizacao?.descricao ?: "Nova Friburgo, RJ",
+                                color = TextoPrincipal,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(30.dp))
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SosCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = RoxoContainer, modifier = Modifier.size(46.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.VolunteerActivism, contentDescription = null, tint = RoxoClaro, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Column {
+                            Text("Olá, ${usuario.nome}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextoPrincipal)
+                            Text("O que você deseja apoiar hoje?", style = MaterialTheme.typography.bodySmall, color = TextoSecundario, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
             }
+
             conteudo()
         }
+
         if (exibirNavegacao) {
             NavegacaoDoador(
-                areaSelecionada,
-                aoSelecionarArea,
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                areaSelecionada = areaSelecionada,
+                aoSelecionarArea = aoSelecionarArea,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
             )
         }
     }
@@ -1337,48 +1714,26 @@ fun NavegacaoDoador(
     aoSelecionarArea: (AreaDoador) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = SuperficieInicio.copy(alpha = 0.97f),
-        shape = RoundedCornerShape(28.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
-        Row(modifier = Modifier.padding(7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            AreaDoador.entries.forEach { area ->
-                val selecionada = area == areaSelecionada
-                val corElemento = if (selecionada) TextoInicio else TextoSecundarioInicio
-                TextButton(
-                    onClick = { aoSelecionarArea(area) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(58.dp)
-                        .background(
-                            if (selecionada) RoxoInicio.copy(alpha = 0.34f) else Color.Transparent,
-                            RoundedCornerShape(20.dp),
-                        ),
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        when (area) {
-                            AreaDoador.Inicio -> IconeInicioNav(cor = corElemento)
-                            AreaDoador.Mapa -> IconeMapaNav(cor = corElemento)
-                            AreaDoador.Carteira -> IconeCarteiraNav(cor = corElemento)
-                            AreaDoador.Perfil -> IconePerfilNav(cor = corElemento)
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = area.rotulo,
-                            color = corElemento,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-            }
+    val itens = remember(areaSelecionada) {
+        AreaDoador.entries.map { area ->
+            ItemNavegacao(
+                rotulo = area.rotulo,
+                icone = area.icone,
+                selecionado = area == areaSelecionada,
+                onClick = { aoSelecionarArea(area) },
+            )
         }
     }
+
+    BarraNavegacaoSos(
+        itens = itens,
+        modifier = modifier,
+    )
 }
+
+// -------------------------------------------------------------------------------------------------
+// ROTA E TELA DA ONG (ORGANIZAÇÃO EM 5 ABAS)
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 fun RotaInicioOng(
@@ -1387,423 +1742,364 @@ fun RotaInicioOng(
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Conteúdo temporário em memória, preparado para futura integração com a API.
-    val publicacoes = remember {
-        mutableStateListOf(
-            PublicacaoOng(
-                tipo = TipoPublicacao.Necessidade,
-                titulo = "50 cestas básicas",
-                descricao = "Arrecadação para famílias atendidas neste mês.",
-            ),
-        )
-    }
-    var nomeTipoEdicao by rememberSaveable { mutableStateOf<String?>(null) }
-    var titulo by rememberSaveable { mutableStateOf("") }
-    var descricao by rememberSaveable { mutableStateOf("") }
-    var retorno by remember { mutableStateOf<String?>(null) }
-    val tipoEdicao = nomeTipoEdicao?.let(TipoPublicacao::valueOf)
-
-    TelaInicioOng(
-        token = token,
-        usuario = usuario,
-        publicacoes = publicacoes,
-        tipoEdicao = tipoEdicao,
-        titulo = titulo,
-        descricao = descricao,
-        retorno = retorno,
-        aoAlterarTitulo = {
-            titulo = it
-            retorno = null
-        },
-        aoAlterarDescricao = {
-            descricao = it
-            retorno = null
-        },
-        aoAbrirEditor = {
-            nomeTipoEdicao = it.name
-            titulo = ""
-            descricao = ""
-            retorno = null
-        },
-        aoFecharEditor = {
-            nomeTipoEdicao = null
-            retorno = null
-        },
-        aoPublicar = {
-            when {
-                titulo.isBlank() || descricao.isBlank() -> {
-                    retorno = "Preencha o título e a descrição."
-                }
-
-                tipoEdicao != null -> {
-                    publicacoes.add(
-                        0,
-                        PublicacaoOng(
-                            tipo = tipoEdicao,
-                            titulo = titulo.trim(),
-                            descricao = descricao.trim(),
-                        ),
-                    )
-                    nomeTipoEdicao = null
-                    titulo = ""
-                    descricao = ""
-                    retorno = "Publicação adicionada com sucesso."
-                }
-            }
-        },
-        aoSair = aoSair,
-        modifier = modifier,
-    )
+    TelaInicioOng(token, usuario, aoSair, modifier)
 }
 
 @Composable
 private fun TelaInicioOng(
     token: String,
     usuario: UsuarioAutenticado,
-    publicacoes: List<PublicacaoOng>,
-    tipoEdicao: TipoPublicacao?,
-    titulo: String,
-    descricao: String,
-    retorno: String?,
-    aoAlterarTitulo: (String) -> Unit,
-    aoAlterarDescricao: (String) -> Unit,
-    aoAbrirEditor: (TipoPublicacao) -> Unit,
-    aoFecharEditor: () -> Unit,
-    aoPublicar: () -> Unit,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    EstruturaInicio(
-        aoSair = aoSair,
-        modifier = modifier,
-    ) {
-        Text(
-            text = "PAINEL DA ONG",
-            color = RoxoClaroInicio,
-            style = MaterialTheme.typography.labelMedium,
-            letterSpacing = 1.1.sp,
-        )
-        Text(
-            text = "Olá, ${usuario.nome}",
-            color = TextoInicio,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 7.dp),
-        )
-        Text(
-            text = "${usuario.email}\nCNPJ: ${usuario.cnpj.orEmpty()}",
-            color = TextoSecundarioInicio,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 8.dp, bottom = 22.dp),
-        )
+    var areaSelecionada by rememberSaveable { mutableStateOf(AreaOng.Inicio) }
+    var confirmarSaida by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-        Button(
-            onClick = { aoAbrirEditor(TipoPublicacao.Campanha) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-        ) {
-            Text("＋  Nova campanha", fontWeight = FontWeight.SemiBold)
-        }
-        OutlinedButton(
-            onClick = { aoAbrirEditor(TipoPublicacao.Necessidade) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp)
-                .height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, RoxoClaroInicio),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = RoxoClaroInicio),
-        ) {
-            Text("Cadastrar necessidade", fontWeight = FontWeight.SemiBold)
-        }
-
-        if (tipoEdicao != null) {
-            EditorPublicacao(
-                tipo = tipoEdicao,
-                titulo = titulo,
-                descricao = descricao,
-                aoAlterarTitulo = aoAlterarTitulo,
-                aoAlterarDescricao = aoAlterarDescricao,
-                aoPublicar = aoPublicar,
-                aoCancelar = aoFecharEditor,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-        }
-
-        if (retorno != null) {
-            Text(
-                text = retorno,
-                color = if (retorno.contains("sucesso")) CorSucessoInicio else Color(0xFFFF8E9B),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 13.dp),
-            )
-        }
-
-        Row(
-            modifier = Modifier.padding(top = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            CartaoResumo(
-                rotulo = "Campanhas ativas",
-                valor = publicacoes.count { it.tipo == TipoPublicacao.Campanha }.toString(),
-                modifier = Modifier.weight(1f),
-            )
-            CartaoResumo(
-                rotulo = "Publicações",
-                valor = publicacoes.size.toString(),
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        Text(
-            text = "Publicações recentes",
-            color = TextoInicio,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 25.dp, bottom = 3.dp),
-        )
-        publicacoes.forEach { publicacao ->
-            CartaoPublicacao(
-                publicacao = publicacao,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
-        EnderecoOng(token)
+    BackHandler(enabled = drawerState.isClosed && areaSelecionada != AreaOng.Inicio) {
+        areaSelecionada = AreaOng.Inicio
     }
-}
 
-@Composable
-private fun EditorPublicacao(
-    tipo: TipoPublicacao,
-    titulo: String,
-    descricao: String,
-    aoAlterarTitulo: (String) -> Unit,
-    aoAlterarDescricao: (String) -> Unit,
-    aoPublicar: () -> Unit,
-    aoCancelar: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = SuperficieInicio,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = if (tipo == TipoPublicacao.Campanha) "Nova campanha" else "Nova necessidade",
-                color = TextoInicio,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            OutlinedTextField(
-                value = titulo,
-                onValueChange = aoAlterarTitulo,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                label = { Text("Título") },
-                singleLine = true,
-                shape = RoundedCornerShape(13.dp),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                colors = coresCampoInicio(),
-            )
-            OutlinedTextField(
-                value = descricao,
-                onValueChange = aoAlterarDescricao,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp),
-                label = { Text("Descrição") },
-                minLines = 3,
-                maxLines = 5,
-                shape = RoundedCornerShape(13.dp),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                colors = coresCampoInicio(),
-            )
-            Row(
-                modifier = Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ModalNavigationDrawer(
+        modifier = modifier,
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = FundoSuperficie,
+                drawerContentColor = TextoPrincipal,
             ) {
-                TextButton(
-                    onClick = aoCancelar,
-                    modifier = Modifier.weight(1f),
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
                 ) {
-                    Text("Cancelar", color = TextoSecundarioInicio)
+                    SosLogo(modifier = Modifier.padding(vertical = 12.dp))
+                    Text(usuario.nome, color = TextoPrincipal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(usuario.email, color = TextoSecundario, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
+                    HorizontalDivider(color = DivisorPadrao)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    AreaOng.entries.forEach { area ->
+                        NavigationDrawerItem(
+                            label = { Text(area.rotulo, maxLines = 1) },
+                            icon = { Icon(area.icone, contentDescription = area.rotulo) },
+                            selected = area == areaSelecionada,
+                            onClick = {
+                                areaSelecionada = area
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            colors = NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor = RoxoContainer,
+                                selectedIconColor = RoxoClaro,
+                                selectedTextColor = TextoPrincipal,
+                                unselectedContainerColor = Color.Transparent,
+                                unselectedIconColor = TextoTerciario,
+                                unselectedTextColor = TextoPrincipal,
+                            ),
+                        )
+                    }
+                    HorizontalDivider(color = DivisorPadrao, modifier = Modifier.padding(vertical = 10.dp))
+                    NavigationDrawerItem(
+                        label = { Text("Sair") },
+                        icon = { Icon(Icons.Default.Logout, contentDescription = null) },
+                        selected = false,
+                        onClick = { confirmarSaida = true; scope.launch { drawerState.close() } },
+                        colors = NavigationDrawerItemDefaults.colors(unselectedIconColor = CoralAcento, unselectedTextColor = CoralAcento),
+                    )
                 }
-                Button(
-                    onClick = aoPublicar,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RoxoInicio),
-                ) {
-                    Text("Publicar")
+            }
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxSize().background(FundoApp)) {
+            SosTopBar(
+                titulo = areaSelecionada.rotulo,
+                subtitulo = usuario.nome,
+                acoes = {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Abrir menu", tint = TextoPrincipal)
+                    }
+                },
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                when (areaSelecionada) {
+                    AreaOng.Inicio -> PaginaInicialOng(
+                        usuario = usuario,
+                        token = token,
+                        aoNavegarPara = { areaSelecionada = it },
+                    )
+                    AreaOng.CampanhaAtual -> CampanhaAtualOng(
+                        token = token,
+                        aoVerCampanhas = { areaSelecionada = AreaOng.Campanhas },
+                        aoCriarCampanha = { areaSelecionada = AreaOng.CriarCampanha },
+                    )
+                    AreaOng.CriarCampanha -> CampanhasOng(
+                        token = token,
+                        modo = ModoCampanhasOng.CRIACAO,
+                        aoNavegarParaLista = { areaSelecionada = AreaOng.Campanhas },
+                    )
+                    AreaOng.Campanhas -> CampanhasOng(
+                        token = token,
+                        aoCriarNova = { areaSelecionada = AreaOng.CriarCampanha },
+                    )
+                    AreaOng.Dashboard -> DashboardOng(token)
+                    AreaOng.Missao -> MissaoOng(token, aoEditar = { areaSelecionada = AreaOng.Perfil })
+                    AreaOng.Materiais -> NecessidadesOng(token)
+                    AreaOng.Publicacoes -> PublicacoesOng(token)
+                    AreaOng.Perfil -> PerfilInstitucionalOng(token, usuario)
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun CartaoResumo(
-    rotulo: String,
-    valor: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(15.dp),
-        colors = CardDefaults.cardColors(containerColor = SuperficieInicio),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = rotulo, color = TextoSecundarioInicio, style = MaterialTheme.typography.labelSmall)
-            Text(
-                text = valor,
-                color = RoxoClaroInicio,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 7.dp),
+        if (confirmarSaida) {
+            DialogoConfirmacao(
+                titulo = "Encerrar sessão",
+                mensagem = "Deseja sair da área institucional de ${usuario.nome}?",
+                textoConfirmar = "Sair",
+                textoCancelar = "Continuar no sistema",
+                perigoso = true,
+                aoConfirmar = { confirmarSaida = false; aoSair() },
+                aoCancelar = { confirmarSaida = false },
             )
         }
     }
 }
 
 @Composable
-private fun CartaoPublicacao(
-    publicacao: PublicacaoOng,
-    modifier: Modifier = Modifier,
+private fun PaginaInicialOng(
+    usuario: UsuarioAutenticado,
+    token: String,
+    aoNavegarPara: (AreaOng) -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(15.dp),
-        colors = CardDefaults.cardColors(containerColor = SuperficieInicio),
-        border = BorderStroke(1.dp, BordaInicio),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    SosCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Olá, ${usuario.nome}", color = TextoPrincipal, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Veja o andamento da sua organização e escolha o próximo passo.", color = TextoSecundario, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+    }
+
+    CampanhaAtualOng(
+        token = token,
+        aoVerCampanhas = { aoNavegarPara(AreaOng.Campanhas) },
+        aoCriarCampanha = { aoNavegarPara(AreaOng.CriarCampanha) },
+    )
+
+    Text("Atalhos", color = TextoPrincipal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    AcaoRapidaOng("Criar campanha", "Comece uma nova mobilização", Icons.Default.Add) { aoNavegarPara(AreaOng.CriarCampanha) }
+    AcaoRapidaOng("Ver campanhas", "Acompanhe rascunhos e resultados", Icons.Default.Campaign) { aoNavegarPara(AreaOng.Campanhas) }
+    AcaoRapidaOng("Ver dashboard", "Consulte o resumo do ano", Icons.Default.Dashboard) { aoNavegarPara(AreaOng.Dashboard) }
+    AcaoRapidaOng("Nossa missão", "Apresente a causa da organização", Icons.Default.VolunteerActivism) { aoNavegarPara(AreaOng.Missao) }
+}
+
+@Composable
+private fun AcaoRapidaOng(titulo: String, descricao: String, icone: ImageVector, onClick: () -> Unit) {
+    SosCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(icone, contentDescription = null, tint = RoxoClaro, modifier = Modifier.size(24.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = publicacao.tipo.rotulo,
-                    color = RoxoClaroInicio,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Text(
-                    text = publicacao.titulo,
-                    color = TextoInicio,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-                Text(
-                    text = publicacao.descricao,
-                    color = TextoSecundarioInicio,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                Text(titulo, color = TextoPrincipal, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(descricao, color = TextoSecundario, style = MaterialTheme.typography.bodySmall)
             }
-            Text(
-                text = "Publicada",
-                color = CorSucessoInicio,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = TextoSecundario, modifier = Modifier.size(18.dp))
         }
     }
 }
 
 @Composable
-private fun EstruturaInicio(
-    aoSair: () -> Unit,
-    modifier: Modifier = Modifier,
-    conteudo: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+private fun CampanhaAtualOng(
+    token: String,
+    aoVerCampanhas: () -> Unit,
+    aoCriarCampanha: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(RoxoInicio.copy(alpha = 0.17f), FundoInicio),
-                    radius = 900f,
-                ),
+    val repository = remember { DomainRepository() }
+    var campanha by remember { mutableStateOf<Campanha?>(null) }
+    var carregando by remember { mutableStateOf(true) }
+    var erro by remember { mutableStateOf<String?>(null) }
+    var tentativa by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(token, tentativa) {
+        carregando = true
+        erro = null
+        try {
+            campanha = repository.minhasCampanhas(token, "ATIVA").firstOrNull()
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
+            erro = failure.message ?: "Não foi possível carregar a campanha atual."
+        } finally {
+            carregando = false
+        }
+    }
+
+    SosCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Campanha atual", color = TextoPrincipal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("A campanha ativa mais recente da sua ONG.", color = TextoSecundario, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+        when {
+            carregando -> EstadoCarregando(mensagem = "Carregando campanha...")
+            erro != null -> EstadoErro(mensagem = erro.orEmpty(), aoTentarNovamente = { tentativa++ })
+            campanha == null -> EstadoVazio(
+                titulo = "Nenhuma campanha ativa",
+                mensagem = "Crie ou publique uma campanha para acompanhá-la aqui.",
+                textoAcao = "Criar campanha",
+                aoClicarAcao = aoCriarCampanha,
             )
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 22.dp, vertical = 20.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            LogoInicio()
-            TextButton(
-                onClick = aoSair,
-                modifier = Modifier.heightIn(min = 44.dp),
-            ) {
-                Text(text = "Sair", color = TextoSecundarioInicio)
+            else -> {
+                val atual = requireNotNull(campanha)
+                val progresso = if (atual.metaCentavos > 0) (atual.arrecadadoCentavos.toFloat() / atual.metaCentavos.toFloat()).coerceIn(0f, 1f) else 0f
+                Text(atual.titulo, color = TextoPrincipal, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(atual.categoria.nome, color = RoxoClaro, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 3.dp))
+                Text(atual.descricao, color = TextoSecundario, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                LinearProgressIndicator(
+                    progress = { progresso },
+                    modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(8.dp),
+                    color = CorSucesso,
+                    trackColor = FundoCampo,
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(Formatadores.formatarMoeda(atual.arrecadadoCentavos), color = CorSucesso, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("Meta ${Formatadores.formatarMoeda(atual.metaCentavos)}", color = TextoSecundario, style = MaterialTheme.typography.labelMedium)
+                }
+                SosBotaoSecundario(texto = "Ver todas as campanhas", onClick = aoVerCampanhas, modifier = Modifier.padding(top = 12.dp))
             }
         }
-        Spacer(modifier = Modifier.height(34.dp))
-        conteudo()
-        Spacer(modifier = Modifier.height(20.dp))
     }
 }
+
+@Composable
+private fun MissaoOng(token: String, aoEditar: () -> Unit) {
+    val repository = remember { DomainRepository() }
+    var ong by remember { mutableStateOf<OrganizacaoPublica?>(null) }
+    var carregando by remember { mutableStateOf(true) }
+    var erro by remember { mutableStateOf<String?>(null) }
+    var tentativa by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(token, tentativa) {
+        carregando = true
+        erro = null
+        try {
+            ong = repository.perfilOng(token)
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
+            erro = failure.message ?: "Não foi possível carregar a missão da ONG."
+        } finally {
+            carregando = false
+        }
+    }
+
+    when {
+        carregando -> EstadoCarregando(mensagem = "Carregando missão...")
+        erro != null -> EstadoErro(mensagem = erro.orEmpty(), aoTentarNovamente = { tentativa++ })
+        else -> SosCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Nossa missão", color = TextoPrincipal, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            val descricao = ong?.descricao.orEmpty()
+            if (descricao.isBlank()) {
+                EstadoVazio(
+                    titulo = "Conte a missão da sua ONG",
+                    mensagem = "Explique a causa, quem vocês atendem e o impacto que querem gerar.",
+                    textoAcao = "Editar perfil institucional",
+                    aoClicarAcao = aoEditar,
+                )
+            } else {
+                Text(descricao, color = TextoSecundario, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
+                SosBotaoSecundario(texto = "Editar missão", onClick = aoEditar, modifier = Modifier.padding(top = 16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerfilInstitucionalOng(token: String, usuario: UsuarioAutenticado) {
+    var abaPerfil by rememberSaveable { mutableIntStateOf(0) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SosCard(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(shape = CircleShape, color = RoxoContainer, modifier = Modifier.size(58.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.CorporateFare, contentDescription = null, tint = RoxoClaro, modifier = Modifier.size(30.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(usuario.nome, color = TextoPrincipal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(usuario.email, color = TextoSecundario, style = MaterialTheme.typography.bodySmall)
+                    usuario.cnpj?.takeIf(String::isNotBlank)?.let {
+                        Text("CNPJ ${Formatadores.formatarCnpj(it)}", color = TextoTerciario, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 3.dp))
+                    }
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = FundoSuperficie,
+            border = BorderStroke(1.dp, BordaPadrao),
+        ) {
+            TabRow(
+                selectedTabIndex = abaPerfil,
+                containerColor = Color.Transparent,
+                contentColor = TextoPrincipal,
+                indicator = { posicoes ->
+                    if (abaPerfil < posicoes.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(posicoes[abaPerfil]),
+                            height = 3.dp,
+                            color = RoxoPrincipal,
+                        )
+                    }
+                },
+                divider = { HorizontalDivider(color = DivisorPadrao) },
+            ) {
+                Tab(
+                    selected = abaPerfil == 0,
+                    onClick = { abaPerfil = 0 },
+                    text = {
+                        Text(
+                            text = "Dados da Instituição",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (abaPerfil == 0) FontWeight.Bold else FontWeight.Medium,
+                            color = if (abaPerfil == 0) RoxoClaro else TextoSecundario,
+                        )
+                    },
+                )
+                Tab(
+                    selected = abaPerfil == 1,
+                    onClick = { abaPerfil = 1 },
+                    text = {
+                        Text(
+                            text = "Endereço e Sede",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (abaPerfil == 1) FontWeight.Bold else FontWeight.Medium,
+                            color = if (abaPerfil == 1) RoxoClaro else TextoSecundario,
+                        )
+                    },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (abaPerfil == 0) {
+            PerfilOngEditor(token)
+        } else {
+            EnderecoOng(token)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
+// LOGO SOS+
+// -------------------------------------------------------------------------------------------------
 
 @Composable
 fun LogoInicio(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Box(modifier = Modifier.size(28.dp)) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = 28.dp, height = 10.dp)
-                    .background(RoxoClaroInicio, RoundedCornerShape(6.dp)),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = 10.dp, height = 28.dp)
-                    .background(RoxoClaroInicio, RoundedCornerShape(6.dp)),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(7.dp)
-                    .background(Color(0xFFFF6478), RoundedCornerShape(50)),
-            )
-        }
-        Text(
-            text = "SOS+",
-            color = TextoInicio,
-            fontSize = 23.sp,
-            fontWeight = FontWeight.Bold,
-        )
-    }
+    SosLogo(modifier = modifier)
 }
-
-@Composable
-private fun coresCampoInicio() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = TextoInicio,
-    unfocusedTextColor = TextoInicio,
-    focusedContainerColor = FundoInicio,
-    unfocusedContainerColor = FundoInicio,
-    focusedBorderColor = RoxoClaroInicio,
-    unfocusedBorderColor = BordaInicio,
-    focusedLabelColor = RoxoClaroInicio,
-    unfocusedLabelColor = TextoSecundarioInicio,
-    cursorColor = RoxoClaroInicio,
-)

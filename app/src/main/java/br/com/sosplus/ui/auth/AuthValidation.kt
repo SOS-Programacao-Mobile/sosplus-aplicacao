@@ -12,6 +12,18 @@ internal fun cnpjValido(valor: String): Boolean {
     return cnpj.takeLast(2) == "$primeiro${digito(cnpj.take(12) + primeiro)}"
 }
 
+internal fun cpfValido(valor: String): Boolean {
+    val cpf = valor.filter(Char::isDigit)
+    if (cpf.length != 11 || cpf.toSet().size == 1) return false
+    fun digito(base: String, pesos: IntArray): Int {
+        val resto = base.mapIndexed { indice, char -> char.digitToInt() * pesos[indice] }.sum() % 11
+        return if (resto < 2) 0 else 11 - resto
+    }
+    val primeiro = digito(cpf.take(9), intArrayOf(10, 9, 8, 7, 6, 5, 4, 3, 2))
+    val segundo = digito(cpf.take(9) + primeiro, intArrayOf(11, 10, 9, 8, 7, 6, 5, 4, 3, 2))
+    return cpf.endsWith("$primeiro$segundo")
+}
+
 internal fun validarCadastro(
     perfil: PerfilUsuario,
     nome: String,
@@ -19,6 +31,7 @@ internal fun validarCadastro(
     senha: String,
     confirmacao: String,
     cnpj: String = "",
+    cpf: String = "",
 ): RetornoAutenticacao = when {
     nome.isBlank() || email.isBlank() || senha.isBlank() || confirmacao.isBlank() ||
         (perfil == PerfilUsuario.Ong && cnpj.isBlank()) -> RetornoAutenticacao("Preencha todos os campos obrigatórios.")
@@ -28,5 +41,6 @@ internal fun validarCadastro(
     senha.length > 128 || confirmacao.length > 128 -> RetornoAutenticacao("A senha deve ter no máximo 128 caracteres.")
     senha != confirmacao -> RetornoAutenticacao("As senhas não são iguais.")
     perfil == PerfilUsuario.Ong && !cnpjValido(cnpj) -> RetornoAutenticacao("Digite um CNPJ válido.")
+    perfil == PerfilUsuario.Doador && cpf.isNotBlank() && !cpfValido(cpf) -> RetornoAutenticacao("Digite um CPF válido.")
     else -> RetornoAutenticacao("", sucesso = true)
 }

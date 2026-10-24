@@ -58,7 +58,7 @@ data class DoacaoUsuario(
 class AuthApiException(message: String) : IOException(message)
 
 class AuthRepository {
-    suspend fun cadastrar(nome: String, email: String, senha: String, confirmacao: String, tipo: String, cnpj: String) {
+    suspend fun cadastrar(nome: String, email: String, senha: String, confirmacao: String, tipo: String, cnpj: String, cpf: String = "") {
         request("register", "POST", JSONObject().apply {
             put("nome", nome.trim())
             put("email", email.trim())
@@ -66,6 +66,7 @@ class AuthRepository {
             put("confirmacaoSenha", confirmacao)
             put("tipo", tipo)
             if (tipo == "ONG") put("cnpj", cnpj.trim())
+            if (tipo == "DOADOR" && cpf.isNotBlank()) put("cpf", cpf.filter(Char::isDigit))
         })
     }
 
@@ -104,6 +105,7 @@ class AuthRepository {
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("Authorization", "Bearer $token")
             val status = connection.responseCode
+            if (status == 401) SessionEvents.expirar(token)
             when (status) {
                 HttpURLConnection.HTTP_NO_CONTENT -> {
                     NetworkLogger.response(call, status, bodyBytes = 0)
@@ -143,6 +145,7 @@ class AuthRepository {
             connection.setRequestProperty("Content-Type", mimeType)
             connection.outputStream.use { it.write(conteudo) }
             val status = connection.responseCode
+            if (status == 401) SessionEvents.expirar(token)
             NetworkLogger.response(call, status)
             if (status !in 200..299) throw erroDaResposta(connection, status)
         } catch (error: Exception) {
@@ -159,6 +162,14 @@ class AuthRepository {
             put("novaSenha", novaSenha)
             put("confirmacaoSenha", confirmacao)
         }, token)
+    }
+
+    suspend fun solicitarRecuperacao(email: String): String = request("recuperacao", "POST", JSONObject().put("email", email.trim()))
+        .getString("mensagem")
+
+    suspend fun confirmarRecuperacao(email: String, codigo: String, novaSenha: String, confirmacao: String) {
+        request("recuperacao/confirmar", "POST", JSONObject().put("email", email.trim()).put("codigo", codigo.trim())
+            .put("novaSenha", novaSenha).put("confirmacaoSenha", confirmacao))
     }
 
     suspend fun carregarDadosPessoais(token: String): DadosPessoaisUsuario {
@@ -261,6 +272,7 @@ class AuthRepository {
                     connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
                 }
                 val status = connection.responseCode
+            if (status == 401 && token != null) SessionEvents.expirar(token)
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
                 val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 NetworkLogger.response(call, status, text)

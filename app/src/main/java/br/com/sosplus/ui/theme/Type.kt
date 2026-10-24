@@ -2,33 +2,25 @@ package br.com.sosplus.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
+private val materialTypography = Typography()
+private fun TextStyle.compact() = copy(fontSize = fontSize * 0.94f)
+
+// Reduz a escala um pouco, preservando a fonte do sistema e a preferência de acessibilidade.
+val Typography = materialTypography.copy(
+    displayLarge = materialTypography.displayLarge.compact(),
+    displayMedium = materialTypography.displayMedium.compact(),
+    displaySmall = materialTypography.displaySmall.compact(),
+    headlineLarge = materialTypography.headlineLarge.compact(),
+    headlineMedium = materialTypography.headlineMedium.compact(),
+    headlineSmall = materialTypography.headlineSmall.compact(),
+    titleLarge = materialTypography.titleLarge.compact(),
+    titleMedium = materialTypography.titleMedium.compact(),
+    titleSmall = materialTypography.titleSmall.compact(),
+    bodyLarge = materialTypography.bodyLarge.compact(),
+    bodyMedium = materialTypography.bodyMedium.compact(),
+    bodySmall = materialTypography.bodySmall.compact(),
+    labelLarge = materialTypography.labelLarge.compact(),
+    labelMedium = materialTypography.labelMedium.compact(),
+    labelSmall = materialTypography.labelSmall.compact(),
 )
