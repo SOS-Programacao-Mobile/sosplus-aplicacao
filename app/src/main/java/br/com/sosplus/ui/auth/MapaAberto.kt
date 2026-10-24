@@ -27,10 +27,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,6 +128,8 @@ private const val DISTANCIA_MINIMA_GPS_METROS = 12f
 private const val INTERVALO_MINIMO_REDESENHO_GPS_MS = 20_000L
 private const val INTERVALO_ATUALIZACAO_ONGS_MS = 120_000L
 private const val MAX_MARCADORES_ONG_NO_MAPA = 80
+private const val TIMEOUT_PRIMEIRA_LOCALIZACAO_MS = 15_000L
+private const val IDADE_MAXIMA_ULTIMA_POSICAO_MS = 5 * 60 * 1_000L
 
 private data class ChaveIconeOng(
     val icone: String,
@@ -384,11 +388,30 @@ fun TelaMapaDoador(
     var filtroCategoria by remember { mutableStateOf<String?>(null) }
     var exibirTodasOngs by remember { mutableStateOf(false) }
     var mapaCentralizadoNaPosicao by remember { mutableStateOf(false) }
+    var negadaDefinitivamente by rememberSaveable { mutableStateOf(false) }
+    var permissaoSolicitadaAoAbrir by rememberSaveable { mutableStateOf(false) }
+    var servicoIndisponivel by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         autorizado = permitido()
         if (!autorizado) {
             posicao = null
+            // Sem justificativa disponível após uma recusa, o sistema não exibirá mais
+            // o diálogo: o usuário só pode liberar o acesso nas configurações do app.
+            val activity = context.encontrarActivity()
+            negadaDefinitivamente = activity != null &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION)
+        } else {
+            negadaDefinitivamente = false
+        }
+    }
+
+    // Ao abrir o mapa, solicita a permissão uma única vez. Se o usuário recusar,
+    // o mapa segue funcionando com a última localização salva ou a região padrão.
+    LaunchedEffect(Unit) {
+        if (!autorizado && !permissaoSolicitadaAoAbrir) {
+            permissaoSolicitadaAoAbrir = true
+            launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
@@ -457,7 +480,9 @@ fun TelaMapaDoador(
     DisposableEffect(lifecycle, map) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                // A permissão pode ter mudado nas configurações enquanto o app estava pausado.
                 autorizado = permitido()
+                if (autorizado) negadaDefinitivamente = false else posicao = null
                 ativo = true
                 map.onResume()
             } else if (event == Lifecycle.Event.ON_PAUSE) {
@@ -477,22 +502,37 @@ fun TelaMapaDoador(
     // Localização aproximada por rede (Wi-Fi/antenas), sem provedor de satélite.
     DisposableEffect(autorizado, ativo) {
         var disposed = false
+        servicoIndisponivel = false
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                if (!disposed && autorizado && ativo && permitido() && deveAtualizarPosicao(posicao, location)) {
-                    posicao = location
+                if (!disposed && autorizado && ativo && permitido()) {
+                    servicoIndisponivel = false
+                    if (deveAtualizarPosicao(posicao, location)) posicao = location
                 }
             }
-            override fun onProviderDisabled(provider: String) {}
-            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {
+                if (!disposed) servicoIndisponivel = true
+            }
+            override fun onProviderEnabled(provider: String) {
+                if (!disposed) servicoIndisponivel = false
+            }
         }
         if (autorizado && ativo) {
+            val provider = LocationManager.NETWORK_PROVIDER
             try {
-                val providers = listOf(LocationManager.NETWORK_PROVIDER)
-                    .filter { manager.allProviders.contains(it) }
-                providers.forEach {
+                if (provider !in manager.allProviders || !manager.isProviderEnabled(provider)) {
+                    servicoIndisponivel = true
+                }
+                // Uma leitura recente já conhecida permite centralizar o mapa sem esperar.
+                if (posicao == null) {
+                    manager.getLastKnownLocation(provider)
+                        ?.takeIf { System.currentTimeMillis() - it.time <= IDADE_MAXIMA_ULTIMA_POSICAO_MS }
+                        ?.let { posicao = it }
+                }
+                if (provider in manager.allProviders) {
+                    // Registrado mesmo com o provedor desligado: onProviderEnabled avisa quando voltar.
                     manager.requestLocationUpdates(
-                        it,
+                        provider,
                         INTERVALO_GPS_MS,
                         DISTANCIA_MINIMA_GPS_METROS,
                         listener,
@@ -507,6 +547,15 @@ fun TelaMapaDoador(
         onDispose {
             disposed = true
             manager.removeUpdates(listener)
+        }
+    }
+
+    // Se nenhuma leitura chegar a tempo, informa que a localização está indisponível
+    // em vez de manter o estado "buscando" indefinidamente.
+    LaunchedEffect(autorizado, ativo, posicao == null) {
+        if (autorizado && ativo && posicao == null) {
+            delay(TIMEOUT_PRIMEIRA_LOCALIZACAO_MS)
+            if (posicao == null) servicoIndisponivel = true
         }
     }
 
@@ -599,33 +648,36 @@ fun TelaMapaDoador(
     val ongsFiltradas = remember(ongs, filtroCategoria) {
         if (filtroCategoria == null) ongs else ongs.filter { it.categoria == filtroCategoria }
     }
-    val textoStatusGps = when {
-        !autorizado && localizacaoUsuario != null -> "Localização salva"
-        !autorizado -> "Localização desativada"
-        posicao == null && localizacaoUsuario != null -> "Localização salva"
-        posicao == null -> "Buscando localização…"
-        else -> "Localização ativa"
+    val estadoLocalizacao = estadoLocalizacaoMapa(
+        autorizado = autorizado,
+        negadaDefinitivamente = negadaDefinitivamente,
+        temPosicaoAtual = posicao != null,
+        servicoIndisponivel = servicoIndisponivel,
+    )
+    val temLocalizacaoSalva = localizacaoUsuario != null
+    val textoStatusGps = textoStatusLocalizacao(estadoLocalizacao, temLocalizacaoSalva)
+    val avisoLocalizacao = avisoLocalizacao(estadoLocalizacao, temLocalizacaoSalva)
+    val corStatusGps = when (estadoLocalizacao) {
+        EstadoLocalizacaoMapa.Ativa -> CorSucessoInicio
+        EstadoLocalizacaoMapa.Buscando -> if (temLocalizacaoSalva) CorSucessoInicio else RoxoClaroInicio
+        else -> TextoSecundarioInicio
     }
-    val corStatusGps = when {
-        !autorizado -> TextoSecundarioInicio
-        posicao == null && localizacaoUsuario != null -> CorSucessoInicio
-        posicao == null -> RoxoClaroInicio
-        else -> CorSucessoInicio
-    }
+    // Referência para distâncias e para escolher os pins mais próximos: posição
+    // atual quando disponível, senão a última salva ou a região padrão.
+    val pontoReferencia = posicao?.let { GeoPoint(it.latitude, it.longitude) } ?: pontoPadraoMapa
 
     // A API pode devolver centenas de ONGs. Exibimos os pins mais próximos e sempre
     // preservamos a seleção atual, evitando uma alocação em massa na thread principal.
     val ongsParaMarcadores = remember(
         ongsFiltradas,
         ongSelecionada?.id,
-        localizacaoUsuario?.latitude,
-        localizacaoUsuario?.longitude,
+        pontoReferencia,
     ) {
         if (ongsFiltradas.size <= MAX_MARCADORES_ONG_NO_MAPA) {
             ongsFiltradas
         } else {
             val proximas = ongsFiltradas
-                .sortedBy { ong -> GeoPoint(ong.latitude, ong.longitude).distanceToAsDouble(pontoPadraoMapa) }
+                .sortedBy { ong -> GeoPoint(ong.latitude, ong.longitude).distanceToAsDouble(pontoReferencia) }
                 .take(MAX_MARCADORES_ONG_NO_MAPA)
             val selecionada = ongsFiltradas.firstOrNull { it.id == ongSelecionada?.id }
             if (selecionada != null && selecionada !in proximas) {
@@ -675,13 +727,20 @@ fun TelaMapaDoador(
     }
 
     // Função de centralização na posição atual ou padrão
-    val centralizarNoUsuario: () -> Unit = {
-        if (!autorizado) {
-            launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+    val resolverLocalizacao: () -> Unit = {
+        when (estadoLocalizacao) {
+            EstadoLocalizacaoMapa.PermissaoNecessaria ->
+                launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+            EstadoLocalizacaoMapa.PermissaoNegadaDefinitivamente -> abrirConfiguracoesDoApp(context)
+            EstadoLocalizacaoMapa.Indisponivel -> abrirConfiguracoesDeLocalizacao(context)
+            EstadoLocalizacaoMapa.Buscando, EstadoLocalizacaoMapa.Ativa -> Unit
         }
-        val destino = posicao?.let { GeoPoint(it.latitude, it.longitude) } ?: pontoPadraoMapa
+    }
+
+    val centralizarNoUsuario: () -> Unit = {
+        if (!autorizado) resolverLocalizacao()
         map.controller.setZoom(16.2)
-        map.controller.animateTo(destino)
+        map.controller.animateTo(pontoReferencia)
     }
 
     Box(
@@ -829,6 +888,40 @@ fun TelaMapaDoador(
                             }
                         }
 
+                        // Aviso quando a permissão foi negada ou a localização está indisponível.
+                        // Fica no canto inferior esquerdo, sem cobrir os botões flutuantes.
+                        avisoLocalizacao?.let { aviso ->
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 14.dp, end = 72.dp, bottom = 14.dp)
+                                    .clickable(onClick = resolverLocalizacao),
+                                color = SuperficieInicio.copy(alpha = 0.95f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, BordaInicio),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Text(
+                                        text = aviso.mensagem,
+                                        color = TextoSecundarioInicio,
+                                        fontSize = 11.5.sp,
+                                        lineHeight = 14.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = "${aviso.acao} ›",
+                                        color = RoxoClaroInicio,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        }
+
                         // Botões Flutuantes no canto inferior direito
                         Column(
                             modifier = Modifier
@@ -933,14 +1026,19 @@ fun TelaMapaDoador(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Carrossel Horizontal de Cards de ONGs
-                    val pontoReferencia = posicao?.let { GeoPoint(it.latitude, it.longitude) } ?: pontoPadraoMapa
                     val ongsOrdenadas = remember(ongsFiltradas, pontoReferencia) {
                         ongsFiltradas.sortedBy {
                             GeoPoint(it.latitude, it.longitude).distanceToAsDouble(pontoReferencia)
                         }
                     }
+                    val estadoCarrossel = rememberLazyListState()
+                    // Quando a ONG mais próxima muda (ex.: chegou a posição atual), volta ao início.
+                    LaunchedEffect(ongsOrdenadas.firstOrNull()?.id) {
+                        estadoCarrossel.scrollToItem(0)
+                    }
 
                     LazyRow(
+                        state = estadoCarrossel,
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(horizontal = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1042,7 +1140,6 @@ fun TelaMapaDoador(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(ongsFiltradas, key = { it.id }) { ong ->
-                            val pontoReferencia = posicao?.let { GeoPoint(it.latitude, it.longitude) } ?: pontoPadraoMapa
                             val distMetros = GeoPoint(ong.latitude, ong.longitude).distanceToAsDouble(pontoReferencia)
                             val distTexto = String.format(Locale.forLanguageTag("pt-BR"), "%.1f km", distMetros / 1000.0)
 
