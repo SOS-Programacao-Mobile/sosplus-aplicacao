@@ -14,10 +14,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import br.com.sosplus.data.UsuarioAutenticado
 import br.com.sosplus.data.DadosPessoaisUsuario
+import br.com.sosplus.data.DoacaoUsuario
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -132,12 +134,13 @@ private enum class OpcaoPerfil(
     val descricao: String,
 ) {
     ConfigurarPerfil("◉", "Configurar perfil", "Foto e preferências da conta"),
+    MinhasDoacoes("♡", "Minhas doações", "Histórico das suas contribuições"),
     Pagamentos("\$", "Pagamentos e carteira", "Formas de pagamento e histórico"),
     Informacoes("i", "Informações pessoais", "Dados vinculados à sua conta"),
     Senha("↻", "Redefinir senha", "Atualize sua senha com segurança"),
 }
 
-private enum class TelaPerfil { Principal, InformacoesPessoais, RedefinirSenha }
+private enum class TelaPerfil { Principal, InformacoesPessoais, RedefinirSenha, MinhasDoacoes }
 
 private data class RetornoPerfil(val mensagem: String, val sucesso: Boolean)
 
@@ -149,6 +152,7 @@ fun RotaInicioDoador(
     aoRedefinirSenha: suspend (String, String, String) -> Unit,
     aoCarregarDadosPessoais: suspend () -> DadosPessoaisUsuario,
     aoSalvarDadosPessoais: suspend (DadosPessoaisUsuario) -> DadosPessoaisUsuario,
+    aoCarregarDoacoes: suspend () -> List<DoacaoUsuario>,
     aoSair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -211,6 +215,7 @@ fun RotaInicioDoador(
         aoRedefinirSenha = aoRedefinirSenha,
         aoCarregarDadosPessoais = aoCarregarDadosPessoais,
         aoSalvarDadosPessoais = aoSalvarDadosPessoais,
+        aoCarregarDoacoes = aoCarregarDoacoes,
         telaPerfil = telaPerfil,
         aoAlterarTelaPerfil = { telaPerfil = it },
         aoSair = aoSair,
@@ -231,6 +236,7 @@ private fun TelaInicioDoador(
     aoRedefinirSenha: suspend (String, String, String) -> Unit,
     aoCarregarDadosPessoais: suspend () -> DadosPessoaisUsuario,
     aoSalvarDadosPessoais: suspend (DadosPessoaisUsuario) -> DadosPessoaisUsuario,
+    aoCarregarDoacoes: suspend () -> List<DoacaoUsuario>,
     telaPerfil: TelaPerfil,
     aoAlterarTelaPerfil: (TelaPerfil) -> Unit,
     aoSair: () -> Unit,
@@ -272,7 +278,12 @@ private fun TelaInicioDoador(
                         aoAbrirCarteira = { aoSelecionarArea(AreaDoador.Carteira) },
                         aoAbrirInformacoes = { aoAlterarTelaPerfil(TelaPerfil.InformacoesPessoais) },
                         aoAbrirRedefinicaoSenha = { aoAlterarTelaPerfil(TelaPerfil.RedefinirSenha) },
+                        aoAbrirMinhasDoacoes = { aoAlterarTelaPerfil(TelaPerfil.MinhasDoacoes) },
                         aoSair = aoSair,
+                    )
+                    TelaPerfil.MinhasDoacoes -> TelaMinhasDoacoes(
+                        aoCarregar = aoCarregarDoacoes,
+                        aoVoltar = { aoAlterarTelaPerfil(TelaPerfil.Principal) },
                     )
                     TelaPerfil.InformacoesPessoais -> TelaInformacoesPessoais(
                         usuario = usuario,
@@ -420,6 +431,7 @@ private fun ConteudoPerfil(
     aoAbrirCarteira: () -> Unit,
     aoAbrirInformacoes: () -> Unit,
     aoAbrirRedefinicaoSenha: () -> Unit,
+    aoAbrirMinhasDoacoes: () -> Unit,
     aoSair: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -591,6 +603,7 @@ private fun ConteudoPerfil(
                     opcao = opcao,
                     onClick = {
                         when (opcao) {
+                            OpcaoPerfil.MinhasDoacoes -> aoAbrirMinhasDoacoes()
                             OpcaoPerfil.Pagamentos -> aoAbrirCarteira()
                             OpcaoPerfil.Informacoes -> aoAbrirInformacoes()
                             OpcaoPerfil.Senha -> aoAbrirRedefinicaoSenha()
@@ -903,6 +916,191 @@ private fun TelaInformacoesPessoais(
     ) {
         if (salvando) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextoInicio, strokeWidth = 2.dp)
         else Text("Salvar alterações", fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun TelaMinhasDoacoes(
+    aoCarregar: suspend () -> List<DoacaoUsuario>,
+    aoVoltar: () -> Unit,
+) {
+    // Recarregado da API a cada entrada nesta tela.
+    var doacoes by remember { mutableStateOf<List<DoacaoUsuario>?>(null) }
+    var erro by remember { mutableStateOf<String?>(null) }
+    var tentativa by remember { mutableStateOf(0) }
+
+    LaunchedEffect(tentativa) {
+        erro = null
+        try {
+            doacoes = aoCarregar()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: IOException) {
+            erro = error.message ?: "Não foi possível carregar suas doações."
+        }
+    }
+
+    CabecalhoTelaPerfil("Minhas doações", aoVoltar)
+    Text(
+        "HISTÓRICO",
+        color = RoxoClaroInicio,
+        style = MaterialTheme.typography.labelMedium,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 16.dp, bottom = 10.dp),
+    )
+
+    val lista = doacoes
+    when {
+        erro != null -> {
+            MensagemPerfil(RetornoPerfil(requireNotNull(erro), false))
+            OutlinedButton(onClick = { tentativa++ }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+                Text("Tentar novamente")
+            }
+        }
+        lista == null -> Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = RoxoClaroInicio)
+        }
+        lista.isEmpty() -> Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = SuperficieInicio,
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, BordaInicio),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(28.dp)) {
+                Text("♡", color = RoxoClaroInicio, fontSize = 39.sp)
+                Text("Nenhuma doação ainda", color = TextoInicio, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                Text("Quando você apoiar uma campanha, ela aparecerá aqui.", color = TextoSecundarioInicio, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 7.dp))
+            }
+        }
+        else -> HistoricoDoacoesFiltrado(lista)
+    }
+}
+
+@Composable
+private fun HistoricoDoacoesFiltrado(doacoes: List<DoacaoUsuario>) {
+    var periodo by rememberSaveable { mutableStateOf(PeriodoDoacao.Todas) }
+    val filtradas = remember(doacoes, periodo) { filtrarDoacoesPorPeriodo(doacoes, periodo) }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    ) {
+        PeriodoDoacao.entries.forEach { opcao ->
+            ChipPeriodo(opcao.rotulo, selecionado = opcao == periodo) { periodo = opcao }
+        }
+    }
+
+    val quantidade = if (filtradas.size == 1) "1 doação" else "${filtradas.size} doações"
+    Text(
+        "$quantidade · ${formatarValorDoacao(totalConfirmadoCentavos(filtradas))} confirmados",
+        color = TextoSecundarioInicio,
+        fontSize = 12.5.sp,
+        modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SuperficieInicio,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, BordaInicio),
+    ) {
+        if (filtradas.isEmpty()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("Nenhuma doação neste período", color = TextoInicio, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { periodo = PeriodoDoacao.Todas }, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("Ver todas", color = RoxoClaroInicio, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        } else {
+            Column {
+                filtradas.forEachIndexed { indice, doacao ->
+                    ItemDoacao(doacao)
+                    if (indice < filtradas.lastIndex) {
+                        HorizontalDivider(color = BordaInicio.copy(alpha = 0.65f), modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChipPeriodo(texto: String, selecionado: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selecionado) RoxoInicio.copy(alpha = 0.28f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (selecionado) RoxoClaroInicio else BordaInicio),
+    ) {
+        Text(
+            texto,
+            color = if (selecionado) TextoInicio else TextoSecundarioInicio,
+            fontSize = 12.5.sp,
+            fontWeight = if (selecionado) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+        )
+    }
+}
+
+@Composable
+private fun ItemDoacao(doacao: DoacaoUsuario) {
+    val (rotuloStatus, corStatus) = when (doacao.status) {
+        "CONFIRMADA" -> "CONFIRMADA" to CorSucessoInicio
+        "PENDENTE" -> "PENDENTE" to Color(0xFFFFC46B)
+        "CANCELADA" -> "CANCELADA" to Color(0xFFFF8E9B)
+        "ESTORNADA" -> "ESTORNADA" to Color(0xFFFF8E9B)
+        else -> doacao.status to TextoSecundarioInicio
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                doacao.ongNome,
+                color = TextoInicio,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                formatarValorDoacao(doacao.valorCentavos),
+                color = TextoInicio,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        Text(
+            "Campanha: ${doacao.campanhaTitulo}",
+            color = TextoSecundarioInicio,
+            fontSize = 12.5.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp),
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 9.dp),
+        ) {
+            Text(formatarDataDoacao(doacao.data), color = TextoSecundarioInicio, fontSize = 12.sp)
+            EtiquetaDoacao(rotuloStatus, corStatus)
+            if (doacao.anonima) EtiquetaDoacao("ANÔNIMA", RoxoClaroInicio)
+        }
+    }
+}
+
+@Composable
+private fun EtiquetaDoacao(texto: String, cor: Color) {
+    Surface(color = cor.copy(alpha = 0.12f), shape = RoundedCornerShape(20.dp)) {
+        Text(
+            texto,
+            color = cor,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 

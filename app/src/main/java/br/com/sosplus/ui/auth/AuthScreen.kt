@@ -216,6 +216,10 @@ fun AplicativoSos(modifier: Modifier = Modifier) {
                     }
                     atualizacao.dados
                 },
+                aoCarregarDoacoes = {
+                    val sessaoAtual = requireNotNull(sessao)
+                    repository.carregarDoacoes(sessaoAtual.token, sessaoAtual.usuario.id)
+                },
                 modifier = Modifier.padding(scaffoldPadding),
                 aoSair = sair,
             )
